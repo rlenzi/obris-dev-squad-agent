@@ -38,6 +38,8 @@ class AgentRunContext:
 
     # Filesystem (worktree onde o agente trabalha)
     workspace_root: Path | None = None
+    # Repo URL/label associado ao workspace (passa pelo enforcer.check_edit_file)
+    workspace_repo: str | None = None
 
     # Estado mutavel da execução
     cost_usd_total: float = 0.0
