@@ -102,6 +102,12 @@ class ClientBillingPlan(Base, TimestampMixin):
     included_quota_tasks: Mapped[int] = mapped_column(Integer, default=0)
     overage_markup_pct: Mapped[Decimal] = mapped_column(Numeric(6, 2), default=Decimal("0"))
 
+    # Custos indiretos rateados sobre custos diretos de API
+    # (Anthropic + Voyage + futuros providers)
+    infra_overhead_pct: Mapped[Decimal] = mapped_column(Numeric(6, 2), default=Decimal("20"))
+    fixed_overhead_brl_per_task: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=Decimal("0"))
+    usd_to_brl_rate: Mapped[Decimal] = mapped_column(Numeric(10, 4), default=Decimal("5.0"))
+
     starts_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

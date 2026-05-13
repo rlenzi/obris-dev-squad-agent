@@ -1,10 +1,4 @@
-"""Wrapper async Anthropic com cost tracking automatico no banco.
-
-Toda chamada Claude do sistema deve passar por aqui para que:
-- Custo (USD) seja calculado pela tabela de pricing.
-- Tokens (input, output, cache) sejam gravados em claude_api_calls.
-- task_id + agent_instance_id sejam associados quando disponiveis.
-"""
+"""Wrapper async Anthropic com cost tracking automatico em external_api_calls."""
 
 from __future__ import annotations
 
@@ -19,8 +13,9 @@ from anthropic.types import Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dev_autonomo.common.claude_pricing import get_pricing
+from dev_autonomo.common.enums import ApiCallKind, ApiProvider
 from dev_autonomo.config import get_settings
-from dev_autonomo.db.models.cost import ClaudeApiCall
+from dev_autonomo.db.models.cost import ExternalApiCall
 
 
 @dataclass(slots=True)
@@ -44,18 +39,7 @@ class ClaudeResponse:
 class ClaudeClient:
     """Cliente unificado para chamadas Claude com instrumentation.
 
-    Uso tipico:
-        async with session_scope() as session:
-            client = ClaudeClient(session=session)
-            response = await client.complete(
-                model="claude-haiku-4-5",
-                messages=[{"role": "user", "content": "..."}],
-                client_id=client_id,
-                task_id=task_id,
-            )
-
-    Se `session` for None, NAO grava em claude_api_calls (modo standalone para
-    chamadas system-level cujo custo nao pertence a nenhum cliente).
+    Grava cada chamada em external_api_calls com provider=ANTHROPIC, kind=CHAT.
     """
 
     def __init__(
@@ -105,24 +89,24 @@ class ClaudeClient:
             raise
         finally:
             latency_ms = int((time.monotonic() - start) * 1000)
-            if msg is not None and self._session is not None and client_id is not None:
-                await self._record_call(
-                    msg=msg,
-                    latency_ms=latency_ms,
-                    client_id=client_id,
-                    task_id=task_id,
-                    agent_instance_id=agent_instance_id,
-                    error=None,
-                )
-            elif error is not None and self._session is not None and client_id is not None:
-                await self._record_error(
-                    model=model,
-                    latency_ms=latency_ms,
-                    client_id=client_id,
-                    task_id=task_id,
-                    agent_instance_id=agent_instance_id,
-                    error=error,
-                )
+            if self._session is not None and client_id is not None:
+                if msg is not None:
+                    await self._record_call(
+                        msg=msg,
+                        latency_ms=latency_ms,
+                        client_id=client_id,
+                        task_id=task_id,
+                        agent_instance_id=agent_instance_id,
+                    )
+                elif error is not None:
+                    await self._record_error(
+                        model=model,
+                        latency_ms=latency_ms,
+                        client_id=client_id,
+                        task_id=task_id,
+                        agent_instance_id=agent_instance_id,
+                        error=error,
+                    )
 
         assert msg is not None
         return self._build_response(msg, latency_ms)
@@ -130,7 +114,6 @@ class ClaudeClient:
     # ---- Helpers ----
 
     def _build_response(self, msg: Message, latency_ms: int) -> ClaudeResponse:
-        # Concatena content blocks de texto
         text = "".join(
             block.text for block in msg.content if getattr(block, "type", None) == "text"
         )
@@ -141,7 +124,7 @@ class ClaudeClient:
         cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or 0
         cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
 
-        pricing = get_pricing(msg.model)
+        pricing = get_pricing(msg.model, provider="anthropic")
         cost = pricing.cost_usd(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -170,14 +153,15 @@ class ClaudeClient:
         client_id: UUID,
         task_id: UUID | None,
         agent_instance_id: UUID | None,
-        error: str | None,
     ) -> None:
         assert self._session is not None
         response = self._build_response(msg, latency_ms)
-        call = ClaudeApiCall(
+        call = ExternalApiCall(
             client_id=client_id,
             task_id=task_id,
             agent_instance_id=agent_instance_id,
+            provider=ApiProvider.ANTHROPIC,
+            kind=ApiCallKind.CHAT,
             model=msg.model,
             input_tokens=response.input_tokens,
             output_tokens=response.output_tokens,
@@ -186,7 +170,6 @@ class ClaudeClient:
             cost_usd=response.cost_usd,
             latency_ms=latency_ms,
             request_id=response.request_id,
-            error=error,
         )
         self._session.add(call)
         await self._session.flush()
@@ -202,10 +185,12 @@ class ClaudeClient:
         error: str,
     ) -> None:
         assert self._session is not None
-        call = ClaudeApiCall(
+        call = ExternalApiCall(
             client_id=client_id,
             task_id=task_id,
             agent_instance_id=agent_instance_id,
+            provider=ApiProvider.ANTHROPIC,
+            kind=ApiCallKind.CHAT,
             model=model,
             input_tokens=0,
             output_tokens=0,

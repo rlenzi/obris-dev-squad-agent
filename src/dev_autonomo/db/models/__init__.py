@@ -7,7 +7,7 @@ from dev_autonomo.db.models.core import (
     ClientMembership,
     User,
 )
-from dev_autonomo.db.models.cost import BillingPeriod, ClaudeApiCall
+from dev_autonomo.db.models.cost import BillingPeriod, ExternalApiCall
 from dev_autonomo.db.models.knowledge import (
     KnowledgeIndexingJob,
     OnboardingRun,
@@ -22,7 +22,7 @@ __all__ = [
     "AgentInstance",
     "AgentMessage",
     "BillingPeriod",
-    "ClaudeApiCall",
+    "ExternalApiCall",
     "Client",
     "ClientBillingPlan",
     "ClientMembership",

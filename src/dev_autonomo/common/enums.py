@@ -65,3 +65,23 @@ class BillingPlanKind(StrEnum):
     FIXED = "fixed"
     PAY_PER_USE = "pay_per_use"
     HYBRID = "hybrid"
+
+
+class ApiProvider(StrEnum):
+    """Provider externo cuja chamada gera custo a ser rastreado."""
+    ANTHROPIC = "anthropic"
+    VOYAGE = "voyage"
+    OPENAI = "openai"
+    GITHUB = "github"
+    JIRA = "jira"
+    OTHER = "other"
+
+
+class ApiCallKind(StrEnum):
+    """Tipo de chamada externa (afeta calculo de custo)."""
+    CHAT = "chat"
+    EMBEDDING = "embedding"
+    TOOL = "tool"
+    WEBHOOK = "webhook"
+    OTHER = "other"
+
