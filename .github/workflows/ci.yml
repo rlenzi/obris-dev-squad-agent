@@ -1,8 +1,11 @@
 name: CI
 
-# Workflow stack-agnóstico: lê os comandos do .dev-autonomo.yml na raiz e
-# executa cada check declarado. O setup do runtime (Python/Node/etc) é
-# inferido pelo campo `stack` do yml.
+# Workflow stack-agnóstico: lê comandos do .dev-autonomo.yml e executa.
+#
+# Inclui services Docker para o step `test` (Postgres + Qdrant + RabbitMQ +
+# Redis) — testes de integração precisam disso. Para clientes com stack
+# diferente, os services podem ser ajustados conforme o yml declarar
+# (futuro: workflow lê `sandbox.services` do yml e provisiona dinamicamente).
 
 on:
   pull_request:
@@ -13,7 +16,65 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: dev_autonomo
+          POSTGRES_PASSWORD: ci_test_pwd
+          POSTGRES_DB: dev_autonomo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dev_autonomo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      qdrant:
+        image: qdrant/qdrant:latest
+        ports:
+          - 6333:6333
+
+      rabbitmq:
+        image: rabbitmq:3-management
+        env:
+          RABBITMQ_DEFAULT_USER: dev_autonomo
+          RABBITMQ_DEFAULT_PASS: ci_test_pwd
+        ports:
+          - 5672:5672
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+    env:
+      # Conexão com services do job (postgres/qdrant/rabbitmq/redis ficam no
+      # mesmo network — acessíveis via localhost da view do runner)
+      POSTGRES_USER: dev_autonomo
+      POSTGRES_PASSWORD: ci_test_pwd
+      POSTGRES_DB: dev_autonomo
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      RABBITMQ_USER: dev_autonomo
+      RABBITMQ_PASSWORD: ci_test_pwd
+      RABBITMQ_HOST: localhost
+      RABBITMQ_PORT: 5672
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      QDRANT_HOST: localhost
+      QDRANT_PORT: 6333
+      # API keys fake — testes de integração que batem em Anthropic/Voyage
+      # devem ser marcados com @pytest.mark.requires_external e skippados
+      # no CI até termos secret real configurado.
+      ANTHROPIC_API_KEY: "sk-ant-ci-fake"
+      VOYAGE_API_KEY: "voyage-ci-fake"
+      MASTER_ENCRYPTION_KEY: "JEqMyDsbQwbT4-7Rl0CB-rkrWfdM7l0t5VgGOObhrTM="
+      SECRET_KEY: "ci-test-secret-key-not-for-prod"
+      ENVIRONMENT: "local"
 
     steps:
       - name: Checkout
@@ -42,7 +103,6 @@ jobs:
           print(f"stack={stack}")
           for k in ('install', 'lint', 'typecheck', 'build', 'test'):
               v = (cmds.get(k) or '').strip()
-              # GitHub Actions outputs com newline precisam de heredoc
               if '\n' in v:
                   print(f"{k}<<EOF_CMD_{k}")
                   print(v)
@@ -50,10 +110,8 @@ jobs:
               else:
                   print(f"{k}={v}")
           PY
-          echo "::notice::Stack declarado: $(grep '^stack=' "$GITHUB_OUTPUT" | tail -1)"
 
       # ---- Setup de runtime por stack ----
-      # Adicione novos casos aqui conforme cliente com stack novo entrar.
 
       - name: Setup uv (stack=python*)
         if: startsWith(steps.descriptor.outputs.stack, 'python')
@@ -61,10 +119,7 @@ jobs:
           curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      # TODO: setup-node@v4 quando entrar primeiro cliente node+*
-      # TODO: setup-java@v4 quando entrar primeiro cliente java+*
-
-      # ---- Execução dos checks (genérico) ----
+      # ---- Execução dos checks ----
 
       - name: install
         if: steps.descriptor.outputs.install != ''
@@ -89,6 +144,13 @@ jobs:
         run: |
           echo "+ ${{ steps.descriptor.outputs.build }}"
           ${{ steps.descriptor.outputs.build }}
+
+      # alembic migration antes dos testes (precisa do Postgres já up)
+      - name: db migrate (alembic upgrade head)
+        if: steps.descriptor.outputs.test != ''
+        run: |
+          echo "+ uv run alembic upgrade head"
+          uv run alembic upgrade head
 
       - name: test
         if: steps.descriptor.outputs.test != ''
