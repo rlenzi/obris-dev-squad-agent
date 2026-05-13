@@ -158,11 +158,11 @@ class GitHubClient:
         truncado em 8 KB por arquivo (para evitar payloads gigantes).
         Pagina automaticamente até 300 arquivos (3 páginas de 100).
         """
-        _PATCH_LIMIT = 8 * 1024  # 8 KB por arquivo
-        _MAX_PAGES = 3
+        patch_limit = 8 * 1024  # 8 KB por arquivo
+        max_pages = 3
         files: list[dict[str, Any]] = []
         async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
-            for page in range(1, _MAX_PAGES + 1):
+            for page in range(1, max_pages + 1):
                 resp = await client.get(
                     f"{GITHUB_API}/repos/{owner}/{repo}/pulls/{number}/files",
                     headers=self._headers,
@@ -172,8 +172,8 @@ class GitHubClient:
                 batch = resp.json()
                 for item in batch:
                     patch = item.get("patch", "") or ""
-                    if len(patch) > _PATCH_LIMIT:
-                        patch = patch[:_PATCH_LIMIT] + "\n... [patch truncado em 8 KB]"
+                    if len(patch) > patch_limit:
+                        patch = patch[:patch_limit] + "\n... [patch truncado em 8 KB]"
                     files.append(
                         {
                             "filename": item.get("filename"),

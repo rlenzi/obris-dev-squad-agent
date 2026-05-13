@@ -65,7 +65,7 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "N", "RUF"]
-ignore = ["E501"]
+ignore = ["E501", "B008"]  # B008: FastAPI Depends/Query/Header em defaults eh idiomatic
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

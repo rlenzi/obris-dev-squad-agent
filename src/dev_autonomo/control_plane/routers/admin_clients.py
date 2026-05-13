@@ -5,7 +5,7 @@ Todos os endpoints exigem SYSTEM_ADMIN.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
 
@@ -25,7 +25,7 @@ from dev_autonomo.control_plane.schemas.client import (
     ClientPublic,
     ClientUpdate,
 )
-from dev_autonomo.db.models import Client, ClientBillingPlan, User
+from dev_autonomo.db.models import Client, ClientBillingPlan
 
 router = APIRouter(
     prefix="/admin/clients",
@@ -109,7 +109,7 @@ async def update_client(
     if "status" in data:
         new_status = data["status"]
         if new_status == "archived" and client.archived_at is None:
-            client.archived_at = datetime.now(tz=timezone.utc)
+            client.archived_at = datetime.now(tz=UTC)
         elif new_status != "archived":
             client.archived_at = None
     for key, value in data.items():

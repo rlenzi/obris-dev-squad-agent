@@ -10,7 +10,6 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from dev_autonomo.common.enums import BillingPlanKind
 
-
 # ---- Client ----
 
 

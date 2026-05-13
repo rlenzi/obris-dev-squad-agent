@@ -46,7 +46,7 @@ class JiraClient:
 
     def __init__(self, *, base_url: str, email: str, api_token: str) -> None:
         self._base_url = base_url.rstrip("/")
-        auth_bytes = f"{email}:{api_token}".encode("utf-8")
+        auth_bytes = f"{email}:{api_token}".encode()
         self._auth_header = "Basic " + base64.b64encode(auth_bytes).decode("ascii")
         self._headers = {
             "Authorization": self._auth_header,

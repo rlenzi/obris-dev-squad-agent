@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import typing
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -33,7 +34,7 @@ class IndexingResult:
 class CodeIndexer:
     """Orquestra chunker + voyage + qdrant para indexar um repo local."""
 
-    IGNORE_DIRS: set[str] = {
+    IGNORE_DIRS: typing.ClassVar[set[str]] = {
         ".git",
         "node_modules",
         ".venv",
@@ -97,7 +98,7 @@ class CodeIndexer:
                 continue
             try:
                 chunks = self._chunker.chunk_file(file_path)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 errors.append(f"chunk_file({file_path}): {exc}")
                 continue
             if not chunks:
@@ -202,7 +203,7 @@ class CodeIndexer:
                 continue
             try:
                 chunks = self._chunker.chunk_file(file_path)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 errors.append(f"chunk_file({file_path}): {exc}")
                 continue
             if not chunks:

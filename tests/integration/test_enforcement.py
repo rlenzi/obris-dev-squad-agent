@@ -227,7 +227,7 @@ async def test_check_db_schema_wildcard_star(fixture_squad_with_wildcard_schemas
     """Schema com wildcard '*' autoriza qualquer schema."""
     client_id, squad_id = fixture_squad_with_wildcard_schemas
     # Substitui manifest para usar "*" em schemas
-    suffix = uuid_lib.uuid4().hex[:8]
+    uuid_lib.uuid4().hex[:8]
     async with AsyncSessionLocal() as session:
         sq = await session.get(Squad, squad_id)
         manifest = Manifest(

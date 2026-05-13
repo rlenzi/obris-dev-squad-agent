@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -38,7 +38,7 @@ async def login(
     if not verify_password(body.password, user.hashed_password):
         raise invalid
 
-    user.last_login_at = datetime.now(tz=timezone.utc)
+    user.last_login_at = datetime.now(tz=UTC)
     await session.commit()
 
     token = create_access_token(

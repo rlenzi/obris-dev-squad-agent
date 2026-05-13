@@ -9,7 +9,6 @@ from __future__ import annotations
 import uuid as uuid_lib
 from decimal import Decimal
 from unittest.mock import AsyncMock
-from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
@@ -22,7 +21,6 @@ from dev_autonomo.knowledge.playbook_miner import (
     mine_pr_review_comment,
 )
 from dev_autonomo.knowledge.qdrant_client import KnowledgePartition, QdrantKnowledgeStore
-
 
 # ---- Fixtures ----
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from dev_autonomo.control_plane.dependencies import get_current_user, get_session
 from dev_autonomo.control_plane.schemas.auth import (

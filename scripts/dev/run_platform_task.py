@@ -30,9 +30,7 @@ from dev_autonomo.agent_runtime.toolset.jira import (
     JiraUpdateStatusTool,
 )
 from dev_autonomo.agent_runtime.toolset.repo_checks import RunRepoCheckTool
-
 from scripts.dev._runner_lib import TaskSpec, parse_issue_key, run_task
-
 
 SYSTEM_PROMPT = """\
 Voce e um Dev Backend Python+FastAPI senior na squad Plataforma do projeto

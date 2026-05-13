@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+
 from sqlalchemy import select
 
 from dev_autonomo.agent_runtime.context import AgentRunContext
@@ -69,7 +70,6 @@ async def ensure_indexed(squad_id, client_id):
     name = store.collection_name(KnowledgePartition.CODE, squad_id)
     try:
         # collection_exists levanta se nao existir
-        from qdrant_client import AsyncQdrantClient
         if await store._client.collection_exists(name):
             count = await store.count(KnowledgePartition.CODE, squad_id)
             if count > 0:

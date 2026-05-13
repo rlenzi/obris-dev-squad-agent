@@ -25,9 +25,7 @@ from dev_autonomo.agent_runtime.toolset.jira import (
 )
 from dev_autonomo.common.enums import AgentInstanceStatus, AgentTier
 from dev_autonomo.db.models import AgentInstance, Client, SkillTemplate, Squad
-
-from scripts.dev._runner_lib import TaskSpec, parse_issue_key, run_task
-
+from scripts.dev._runner_lib import TaskSpec, run_task
 
 AGENT_NAME = "Reviewer Plataforma"
 SKILL_TEMPLATE_SLUG = "reviewer-generic-v1"

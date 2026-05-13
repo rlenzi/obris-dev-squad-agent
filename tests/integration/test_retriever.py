@@ -14,7 +14,6 @@ from uuid import uuid4
 
 import pytest
 from qdrant_client.models import PointStruct
-from sqlalchemy import select
 
 from dev_autonomo.common.enums import SquadStatus
 from dev_autonomo.db.models import Client, Manifest, Squad
@@ -29,7 +28,6 @@ from dev_autonomo.knowledge.retriever import (
     RetrievalResult,
 )
 from dev_autonomo.knowledge.voyage_client import VoyageEmbeddingClient
-
 
 # ---- Fixtures ----
 
@@ -257,7 +255,7 @@ async def test_retriever_graceful_on_missing_partition(fixture_squad_no_manifest
 
     # Garante que a collection NAO existe (nao faz ensure_collection nem seed)
     store = QdrantKnowledgeStore()
-    collection_name = store.collection_name(KnowledgePartition.PLAYBOOK, squad_id)
+    store.collection_name(KnowledgePartition.PLAYBOOK, squad_id)
     try:
         await store.drop_collection(KnowledgePartition.PLAYBOOK, squad_id)
     except Exception:

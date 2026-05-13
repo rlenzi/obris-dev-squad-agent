@@ -22,14 +22,13 @@ from dev_autonomo.db.models.task import CrossSquadRequest, Task
 __all__ = [
     "AgentInstance",
     "AgentMessage",
-    "ToolAuthorizationAttempt",
     "BillingPeriod",
-    "ExternalApiCall",
     "Client",
     "ClientBillingPlan",
     "ClientMembership",
     "CrossSquadRequest",
     "EncryptedSecret",
+    "ExternalApiCall",
     "KnowledgeIndexingJob",
     "Manifest",
     "OnboardingRun",
@@ -37,5 +36,6 @@ __all__ = [
     "SkillTemplate",
     "Squad",
     "Task",
+    "ToolAuthorizationAttempt",
     "User",
 ]

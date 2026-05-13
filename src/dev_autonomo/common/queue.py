@@ -98,14 +98,14 @@ async def consume_forever(
             async for message in q_it:
                 try:
                     payload = json.loads(message.body.decode("utf-8"))
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     logger.error("Falha ao decodificar mensagem %s: %s", message.message_id, exc)
                     await message.nack(requeue=False)
                     continue
                 try:
                     await callback(payload, message)
                     await message.ack()
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     logger.exception("Callback falhou em %s: %s", queue_name, exc)
                     await message.nack(requeue=requeue_on_error)
                     if not requeue_on_error:

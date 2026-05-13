@@ -23,7 +23,7 @@ class ToolResult:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def ok(cls, data: Any) -> "ToolResult":
+    def ok(cls, data: Any) -> ToolResult:
         if isinstance(data, (dict, list)):
             content = json.dumps(data, default=str, ensure_ascii=False)
         else:
@@ -31,7 +31,7 @@ class ToolResult:
         return cls(content=content, is_error=False)
 
     @classmethod
-    def error(cls, message: str, *, code: str | None = None) -> "ToolResult":
+    def error(cls, message: str, *, code: str | None = None) -> ToolResult:
         payload: dict[str, Any] = {"error": message}
         if code:
             payload["code"] = code
@@ -101,7 +101,7 @@ class ToolRegistry:
             )
         try:
             return await tool.execute(ctx, inputs)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.exception("tool %s falhou", name)
             return ToolResult.error(
                 f"{type(exc).__name__}: {exc}", code="tool_exception"

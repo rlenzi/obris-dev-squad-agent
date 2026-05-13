@@ -14,7 +14,6 @@ from dev_autonomo.common.enums import (
     SquadStatus,
 )
 
-
 # ---- Squad ----
 
 

@@ -22,8 +22,8 @@ async def ready(session: AsyncSession = Depends(get_session)) -> dict[str, str]:
     """Readiness: confirma conexao com Postgres."""
     try:
         await session.execute(text("SELECT 1"))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE, detail=f"db unavailable: {exc}"
-        )
+        ) from exc
     return {"status": "ready", "db": "ok"}

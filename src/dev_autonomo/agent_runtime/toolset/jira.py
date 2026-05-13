@@ -92,7 +92,7 @@ class JiraGetIssueTool:
             return client
         try:
             issue = await client.get_issue(key)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return ToolResult.error(f"jira get_issue falhou: {exc}", code="jira_error")
         return ToolResult.ok(
             {
@@ -140,7 +140,7 @@ class JiraUpdateStatusTool:
             return client
         try:
             executed = await client.transition_to_status(key, target)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return ToolResult.error(
                 f"jira transition falhou: {exc}", code="jira_error"
             )
@@ -193,7 +193,7 @@ class JiraAddCommentTool:
             return client
         try:
             comment = await client.add_comment(key, comment_text)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return ToolResult.error(
                 f"jira add_comment falhou: {exc}", code="jira_error"
             )
@@ -237,7 +237,7 @@ class JiraCreateSubtaskTool:
                 summary=summary,
                 description_text=inputs.get("description"),
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return ToolResult.error(
                 f"jira create_subtask falhou: {exc}", code="jira_error"
             )
