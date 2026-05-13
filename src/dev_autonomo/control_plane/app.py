@@ -14,6 +14,10 @@ from dev_autonomo.config import get_settings
 from dev_autonomo.control_plane import webhooks as webhooks_module
 from dev_autonomo.control_plane.routers import auth as auth_router
 from dev_autonomo.control_plane.routers import health as health_router
+from dev_autonomo.control_plane.routers import admin_clients as admin_clients_router
+from dev_autonomo.control_plane.routers import client_squads as client_squads_router
+from dev_autonomo.control_plane.routers import cost as cost_router
+from dev_autonomo.control_plane.routers import skill_templates as skill_templates_router
 from dev_autonomo.control_plane.routers import me as me_router
 
 logger = logging.getLogger(__name__)
@@ -48,6 +52,11 @@ def create_app() -> FastAPI:
     app.include_router(health_router.router)
     app.include_router(auth_router.router)
     app.include_router(me_router.router)
+    app.include_router(admin_clients_router.router)
+    app.include_router(client_squads_router.router)
+    app.include_router(skill_templates_router.router)
+    app.include_router(cost_router.admin_router)
+    app.include_router(cost_router.client_router)
 
     # Webhooks: monta sob /webhooks
     # webhooks.py expoe `app` FastAPI proprio; pegamos as rotas dele
