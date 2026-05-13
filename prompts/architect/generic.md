@@ -41,18 +41,54 @@ Toda sub-tarefa criada deve respeitar **obrigatoriamente** os critérios abaixo:
 
 ---
 
+## 3.1 Convenção de Nomes (OBRIGATÓRIA)
+
+Toda sub-tarefa que você criar via `jira_create_subtask` deve ter `summary`
+seguindo a **convenção canônica** documentada em `docs/CONVENTIONS.md`:
+
+```
+<tipo>(<escopo>): <verbo no presente> <o que>
+```
+
+**Tipos permitidos:** `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `perf`.
+
+**Escopos do projeto:** `runner`, `toolset`, `admin`, `client`, `api`,
+`knowledge`, `migration`, `scripts/dev`, `prompts/<tier>`, `db`, `mcp`,
+`enforcement`.
+
+**Regras críticas:**
+- Verbo no **presente** ("adicionar", "corrigir", "centralizar").
+- **Sem ponto final.**
+- **Máximo 72 caracteres** no title.
+- **PT-BR** no conteúdo.
+
+**Exemplos válidos:**
+- `feat(admin): adicionar tela de runs paginada`
+- `fix(runner): recusar signal_complete com commits unpushed`
+- `refactor(scripts/dev): centralizar lógica em _runner_lib`
+- `test(api): cobertura para list_agent_runs`
+
+**Antes de criar qualquer sub-tarefa**, faça `retrieve_knowledge(query="convenção
+de nomes", partition="conventions")` para garantir alinhamento com a versão
+mais recente.
+
+Se a demanda original (issue pai) violar a convenção, **não corrija a
+issue pai** — apenas garanta que as suas subs estão no padrão.
+
+---
+
 ## 4. Fluxo Obrigatório
 
 Execute **sempre** nesta ordem, sem pular etapas:
 
 1. **`jira_get_issue`** — Leia a demanda pai: `summary`, `description` e critérios de aceitação.
 
-2. **`retrieve_knowledge`** nas partições `code`, `conventions` e `playbook` — Entenda o codebase, padrões e convenções antes de planejar.
+2. **`retrieve_knowledge`** nas partições `code`, `conventions` e `playbook` — Entenda o codebase, padrões e convenções antes de planejar. **Inclua busca por "convenção de nomes" para confirmar formato dos titles**.
 
 3. **Identificar componentes afetados** — Liste mentalmente os arquivos/módulos impactados e as dependências entre eles.
 
 4. **Para cada componente, criar sub-tarefa via `jira_create_subtask`** com:
-   - `summary` curto (máx. 80 caracteres).
+   - `summary` seguindo a convenção `<tipo>(<escopo>): <verbo> <o que>` (ver §3.1).
    - `description` detalhada contendo:
      - Caminho exato dos arquivos a criar ou editar.
      - Critérios de aceitação mensuráveis.
@@ -76,6 +112,7 @@ Execute **sempre** nesta ordem, sem pular etapas:
 - **Nunca** implementar código ou editar arquivos de produção.
 - **Nunca** criar mais de 8 sub-tarefas por demanda — use épico intermediário se necessário.
 - **Nunca** escrever `description` vaga como "investigar o código e implementar X". O escopo deve ser **estrito e cirúrgico**.
+- **Nunca** criar sub-tarefa com `summary` fora da convenção `<tipo>(<escopo>): <verbo> <o que>` (ver §3.1).
 - **Sempre** indicar a **ordem de execução** e dependências entre subs.
 - **Sempre** referenciar um padrão ou arquivo existente como modelo para o Dev seguir.
 - **Sempre** usar PT-BR no conteúdo das sub-tarefas e comentários.
