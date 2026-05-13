@@ -47,16 +47,22 @@ class ReindexMessage:
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ReindexMessage":
-        """Desserializa um ``dict`` (vindo da fila) para ``ReindexMessage``."""
-        return cls(
-            client_id=UUID(data["client_id"]),
-            squad_id=UUID(data["squad_id"]),
-            repo_label=data["repo_label"],
-            repo_path=data["repo_path"],
-            commit_hash=data["commit_hash"],
-            files=list(data["files"]),
-        )
+    def from_dict(cls, data: dict) -> ReindexMessage:
+        """Deserializa um payload (dict) em ReindexMessage.
+
+        Levanta ValueError descritivo se o payload estiver malformado.
+        """
+        try:
+            return cls(
+                client_id=UUID(data["client_id"]) if isinstance(data["client_id"], str) else data["client_id"],
+                squad_id=UUID(data["squad_id"]) if isinstance(data["squad_id"], str) else data["squad_id"],
+                repo_label=data["repo_label"],
+                repo_path=data["repo_path"],
+                commit_hash=data["commit_hash"],
+                files=list(data["files"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"ReindexMessage payload invalido: {exc}") from exc
 
     def to_dict(self) -> dict[str, Any]:
         """Serializa para ``dict`` pronto para publicação JSON na fila.
