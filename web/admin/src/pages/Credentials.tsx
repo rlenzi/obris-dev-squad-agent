@@ -63,7 +63,7 @@ export default function CredentialsTab({ clientId }: { clientId: string }) {
               <Plus className="size-4" /> Nova credencial
             </Button>
           </DialogTrigger>
-          <CreateCredentialDialog clientId={clientId} onSuccess={() => setOpenCreate(false)} />
+          {openCreate && <CreateCredentialDialog clientId={clientId} onSuccess={() => setOpenCreate(false)} />}
         </Dialog>
       </CardHeader>
       <CardContent>
@@ -132,11 +132,13 @@ function CredentialRow({ clientId, cred }: { clientId: string; cred: Credential 
               <RefreshCw className="size-3.5" /> Rotacionar
             </Button>
           </DialogTrigger>
-          <RotateCredentialDialog
-            clientId={clientId}
-            cred={cred}
-            onSuccess={() => setOpenRotate(false)}
-          />
+          {openRotate && (
+            <RotateCredentialDialog
+              clientId={clientId}
+              cred={cred}
+              onSuccess={() => setOpenRotate(false)}
+            />
+          )}
         </Dialog>
         <Button
           variant="ghost"

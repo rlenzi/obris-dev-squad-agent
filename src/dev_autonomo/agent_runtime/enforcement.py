@@ -160,10 +160,15 @@ class ManifestEnforcer:
             schemas = list(db_owns.get("schemas", []))
         elif isinstance(db_owns, list):
             schemas = list(db_owns)
-        if schema_name.lower() in [s.lower() for s in schemas]:
-            return AuthorizationResult(
-                True, "owned", matched_rule=f"owns.database:{schema_name}"
-            )
+        # Usa fnmatch (glob) com comparacao case-insensitive, igualando o
+        # comportamento de check_event_publish e check_api_publish.
+        # Ex: "pay_*" autoriza "pay_charges", "*" autoriza qualquer schema.
+        schema_lower = schema_name.lower()
+        for pattern in schemas:
+            if fnmatch.fnmatchcase(schema_lower, pattern.lower()):
+                return AuthorizationResult(
+                    True, "owned", matched_rule=f"owns.database:{pattern}"
+                )
         return AuthorizationResult(
             False,
             "out_of_scope",
@@ -203,6 +208,25 @@ class ManifestEnforcer:
             False,
             "out_of_scope",
             suggestion=f"rota '{route}' nao esta em owns.apis.publishes. "
+            + CROSS_SQUAD_HINT,
+        )
+
+
+    async def check_jira_project(self, project_key: str) -> AuthorizationResult:
+        """Squad pode operar (ler/escrever) issues neste projeto Jira?"""
+        manifest = await self._load_manifest()
+        if manifest is None:
+            return self._no_manifest_result()
+        owns = (manifest.content or {}).get("owns", {})
+        projects = owns.get("jira_projects", []) or []
+        if project_key.upper() in [str(p).upper() for p in projects]:
+            return AuthorizationResult(
+                True, "owned", matched_rule=f"owns.jira_projects:{project_key}"
+            )
+        return AuthorizationResult(
+            False,
+            "out_of_scope",
+            suggestion=f"projeto Jira '{project_key}' fora do escopo. "
             + CROSS_SQUAD_HINT,
         )
 

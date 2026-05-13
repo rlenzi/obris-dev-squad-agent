@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+from qdrant_client.http.exceptions import UnexpectedResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +19,8 @@ from dev_autonomo.knowledge.qdrant_client import (
     QdrantKnowledgeStore,
 )
 from dev_autonomo.knowledge.voyage_client import VoyageEmbeddingClient
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -44,6 +48,7 @@ class RetrievalResult:
     filtered_by_manifest: bool
     raw_results_before_filter: int
     discarded_out_of_scope: int
+    partition_missing: bool = False
 
 
 class ManifestNotFoundError(LookupError):
@@ -118,13 +123,36 @@ class KnowledgeRetriever:
         fetch_limit = (
             limit * self.DEFAULT_OVERFETCH_FACTOR if allowed_repos else limit
         )
-        raw = await self._qdrant.search(
-            partition=partition,
-            squad_id=squad_id,
-            query_vector=query_vec,
-            limit=fetch_limit,
-            filter_payload=payload_filter or None,
-        )
+        try:
+            raw = await self._qdrant.search(
+                partition=partition,
+                squad_id=squad_id,
+                query_vector=query_vec,
+                limit=fetch_limit,
+                filter_payload=payload_filter or None,
+            )
+        except UnexpectedResponse as exc:
+            if exc.status_code == 404:
+                collection_name = self._qdrant.collection_name(partition, squad_id)
+                logger.warning(
+                    "Partition '%s' nao encontrada no Qdrant (collection '%s' inexistente). "
+                    "Retornando lista vazia. Execute a mineracao para popular esta particao.",
+                    partition.value,
+                    collection_name,
+                )
+                duration = time.monotonic() - started
+                return RetrievalResult(
+                    hits=[],
+                    query=query,
+                    partition=partition,
+                    squad_id=squad_id,
+                    duration_seconds=duration,
+                    filtered_by_manifest=False,
+                    raw_results_before_filter=0,
+                    discarded_out_of_scope=0,
+                    partition_missing=True,
+                )
+            raise
 
         # 6) Post-filter por allow-list de repos
         hits: list[RetrievalHit] = []

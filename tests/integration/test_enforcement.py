@@ -80,6 +80,54 @@ async def fixture_squad_with_manifest():
 
 
 @pytest.fixture
+async def fixture_squad_with_wildcard_schemas():
+    """Fixture com schemas usando glob patterns no manifest."""
+    suffix = uuid_lib.uuid4().hex[:8]
+    async with AsyncSessionLocal() as session:
+        client = Client(slug=f"enf-wc-{suffix}", name="Enf WC Test")
+        session.add(client)
+        await session.flush()
+
+        squad = Squad(
+            client_id=client.id,
+            slug=f"enf-wc-squad-{suffix}",
+            name="Enf WC Squad",
+            status=SquadStatus.ACTIVE,
+        )
+        session.add(squad)
+        await session.flush()
+
+        manifest = Manifest(
+            client_id=client.id,
+            squad_id=squad.id,
+            version=1,
+            content={
+                "owns": {
+                    "repos": [],
+                    "database": {"schemas": ["pay_*", "billing"]},
+                }
+            },
+        )
+        session.add(manifest)
+        await session.flush()
+        squad.current_manifest_id = manifest.id
+        await session.commit()
+        client_id, squad_id = client.id, squad.id
+
+    yield client_id, squad_id
+
+    async with AsyncSessionLocal() as session:
+        c = await session.get(Client, client_id)
+        if c:
+            sq = await session.get(Squad, squad_id)
+            if sq:
+                sq.current_manifest_id = None
+                await session.commit()
+            await session.delete(c)
+            await session.commit()
+
+
+@pytest.fixture
 async def fixture_squad_no_manifest():
     suffix = uuid_lib.uuid4().hex[:8]
     async with AsyncSessionLocal() as session:
@@ -172,6 +220,68 @@ async def test_check_db_schema_owned(fixture_squad_with_manifest):
 
         r = await enf.check_db_schema("users")
         assert not r.allowed
+
+
+@pytest.mark.asyncio
+async def test_check_db_schema_wildcard_star(fixture_squad_with_wildcard_schemas):
+    """Schema com wildcard '*' autoriza qualquer schema."""
+    client_id, squad_id = fixture_squad_with_wildcard_schemas
+    # Substitui manifest para usar "*" em schemas
+    suffix = uuid_lib.uuid4().hex[:8]
+    async with AsyncSessionLocal() as session:
+        sq = await session.get(Squad, squad_id)
+        manifest = Manifest(
+            client_id=client_id,
+            squad_id=squad_id,
+            version=2,
+            content={"owns": {"repos": [], "database": {"schemas": ["*"]}}},
+        )
+        session.add(manifest)
+        await session.flush()
+        sq.current_manifest_id = manifest.id
+        await session.commit()
+
+    async with AsyncSessionLocal() as session:
+        enf = ManifestEnforcer(session=session, client_id=client_id, squad_id=squad_id)
+
+        r = await enf.check_db_schema("qualquer_schema")
+        assert r.allowed
+        assert r.reason == "owned"
+        assert r.matched_rule == "owns.database:*"
+
+        r = await enf.check_db_schema("OUTRO_SCHEMA")
+        assert r.allowed
+
+
+@pytest.mark.asyncio
+async def test_check_db_schema_prefix_pay_wildcard(fixture_squad_with_wildcard_schemas):
+    """Schema com prefixo 'pay_*' autoriza pay_charges e pay_subscriptions."""
+    client_id, squad_id = fixture_squad_with_wildcard_schemas
+    async with AsyncSessionLocal() as session:
+        enf = ManifestEnforcer(session=session, client_id=client_id, squad_id=squad_id)
+
+        # Deve ser autorizado pelo pattern "pay_*"
+        r = await enf.check_db_schema("pay_charges")
+        assert r.allowed
+        assert r.reason == "owned"
+        assert "pay_*" in r.matched_rule
+
+        r = await enf.check_db_schema("pay_subscriptions")
+        assert r.allowed
+        assert "pay_*" in r.matched_rule
+
+        # Case-insensitive: maiusculas tambem devem ser autorizadas
+        r = await enf.check_db_schema("PAY_REFUNDS")
+        assert r.allowed
+
+        # Schema exato declarado no manifest
+        r = await enf.check_db_schema("billing")
+        assert r.allowed
+
+        # Fora do escopo: nao bate em nenhum pattern
+        r = await enf.check_db_schema("users")
+        assert not r.allowed
+        assert r.reason == "out_of_scope"
 
 
 @pytest.mark.asyncio

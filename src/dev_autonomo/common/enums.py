@@ -8,6 +8,7 @@ class AgentTier(StrEnum):
     ARCHITECT = "architect"
     DEV = "dev"
     ONBOARDING_ANALYST = "onboarding_analyst"
+    REVIEWER = "reviewer"
 
 
 class SquadStatus(StrEnum):
