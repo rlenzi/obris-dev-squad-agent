@@ -32,6 +32,15 @@ class GitOperationError(RuntimeError):
     pass
 
 
+@dataclass
+class RebaseResult:
+    """Resultado de uma operacao de rebase sobre a branch base remota."""
+
+    success: bool
+    conflict: bool = False
+    error_message: str = ""
+
+
 @dataclass(slots=True)
 class CheckedOutWorktree:
     """Resultado de checkout_for_task: caminho + metadata."""
@@ -209,3 +218,54 @@ class GitWorktreeManager:
             client_id=client_id,
             task_handle=task_handle,
         )
+
+    async def rebase_onto_base(self, worktree: CheckedOutWorktree) -> RebaseResult:
+        """Atualiza o worktree fazendo rebase sobre o topo da branch base remota.
+
+        Passos:
+        1. ``git fetch origin <base_branch>`` — atualiza o remote sem tocar a branch local.
+        2. ``git rebase origin/<base_branch>`` — aplica os commits locais sobre o topo do remote.
+        3. Em caso de conflito, executa ``git rebase --abort`` para limpar o worktree e
+           retorna ``RebaseResult(success=False, conflict=True, error_message=...)``.
+        4. Em sucesso, retorna ``RebaseResult(success=True, conflict=False)``.
+        """
+        base = worktree.base_branch
+
+        # Passo 1: atualiza o remote
+        rc_fetch, _, err_fetch = await _run_git(
+            worktree.path,
+            ["fetch", "origin", base],
+            check=False,
+        )
+        if rc_fetch != 0:
+            return RebaseResult(
+                success=False,
+                conflict=False,
+                error_message=f"git fetch falhou: {err_fetch.strip()}",
+            )
+
+        # Passo 2: rebase sobre origin/<base_branch>
+        rc_rebase, _, err_rebase = await _run_git(
+            worktree.path,
+            ["rebase", f"origin/{base}"],
+            check=False,
+        )
+
+        if rc_rebase != 0:
+            # Passo 3: detecta conflito e aborta para deixar worktree limpo
+            is_conflict = "CONFLICT" in err_rebase or "cannot rebase" in err_rebase
+            logger.warning(
+                "rebase falhou (conflict=%s) em %s: %s",
+                is_conflict,
+                worktree.path,
+                err_rebase.strip(),
+            )
+            await _run_git(worktree.path, ["rebase", "--abort"], check=False)
+            return RebaseResult(
+                success=False,
+                conflict=is_conflict,
+                error_message=err_rebase.strip(),
+            )
+
+        # Passo 4: sucesso
+        return RebaseResult(success=True, conflict=False)
