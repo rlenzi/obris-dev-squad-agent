@@ -1,37 +1,33 @@
-"""Schemas Pydantic para listagem de runs de um agente.
-
-Um "run" representa uma execução agrupada por task_id na tabela
-external_api_calls: agrega tool_calls, custo, timestamps e status.
-"""
+"""Schemas Pydantic de listagem paginada de agent runs."""
 
 from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class AgentRunItem(BaseModel):
-    """Item individual de run — representa uma task_id agrupada."""
+    """Representa um run individual do agente (agrupado por task_id)."""
 
-    model_config = ConfigDict(from_attributes=False)
+    model_config = ConfigDict(from_attributes=True)
 
     task_id: UUID
-    tool_calls_count: int
+    tool_calls_count: int = Field(ge=0)
     total_cost_usd: Decimal
-    started_at: datetime
-    ended_at: datetime
-    status: str = Field(..., description="'completed' ou 'failed'")
+    started_at: datetime          # MIN(occurred_at) do grupo
+    ended_at: datetime | None = None            # MAX(occurred_at) do grupo
+    status: Literal["completed", "failed", "in_progress"]
 
 
 class AgentRunsPage(BaseModel):
-    """Página paginada de runs de um agente."""
+    """Resposta paginada do endpoint de agent runs."""
 
-    model_config = ConfigDict(from_attributes=False)
 
     items: list[AgentRunItem]
-    total: int = Field(..., description="Total de task_ids distintos (sem paginação)")
-    offset: int
-    limit: int
+    total: int        # total de runs distintos (para o frontend calcular páginas)
+    offset: int = Field(ge=0)
+    limit: int = Field(ge=1)

@@ -58,7 +58,11 @@ async def list_agent_runs(
     limit = min(limit, _MAX_LIMIT)
 
     # Filtro base reutilizado nas duas queries
-    _base_where = (
+    base_where = (
+        # Rows orfas (agente deletado, ondelete=SET NULL) ficam com NULL e
+
+        # sao excluidas naturalmente por igualdade.
+
         ExternalApiCall.agent_instance_id == agent_instance_id,
         ExternalApiCall.task_id.is_not(None),
     )
@@ -81,7 +85,7 @@ async def list_agent_runs(
             func.max(ExternalApiCall.occurred_at).label("ended_at"),
             status_expr.label("status"),
         )
-        .where(*_base_where)
+        .where(*base_where)
         .group_by(ExternalApiCall.task_id)
         .order_by(func.max(ExternalApiCall.occurred_at).desc())
         .offset(offset)
@@ -93,7 +97,7 @@ async def list_agent_runs(
     # 4. Query de total (COUNT DISTINCT task_id)
     count_stmt = select(
         func.count(ExternalApiCall.task_id.distinct())
-    ).where(*_base_where)
+    ).where(*base_where)
 
     total: int = (await session.execute(count_stmt)).scalar_one()
 
