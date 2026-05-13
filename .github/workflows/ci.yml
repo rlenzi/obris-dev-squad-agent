@@ -1,0 +1,104 @@
+name: CI
+
+# Workflow stack-agnóstico: lê os comandos do .dev-autonomo.yml na raiz e
+# executa cada check declarado. O setup do runtime (Python/Node/etc) é
+# inferido pelo campo `stack` do yml — esta versão suporta python+fastapi
+# nativamente; outros stacks vão entrar conforme clientes reais aparecerem.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lê .dev-autonomo.yml
+        id: descriptor
+        run: |
+          if [ ! -f .dev-autonomo.yml ]; then
+            echo "::error::.dev-autonomo.yml não encontrado na raiz."
+            exit 1
+          fi
+          # Extrai stack pra logs e pra decidir setup
+          STACK=$(python3 -c "import yaml,sys; d=yaml.safe_load(open('.dev-autonomo.yml')); print(d.get('stack',''))")
+          echo "stack=$STACK" >> "$GITHUB_OUTPUT"
+          echo "Stack declarado: $STACK"
+
+      # ---- Setup por stack ----
+      # Esta sessão é o ÚNICO ponto stack-specific do workflow. Adicione novos
+      # casos aqui conforme cliente novo entra com stack diferente.
+
+      - name: Setup Python (se stack=python*)
+        if: startsWith(steps.descriptor.outputs.stack, 'python')
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Setup uv
+        if: startsWith(steps.descriptor.outputs.stack, 'python')
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # TODO: adicionar setup-node@v4 quando entrar primeiro cliente node+*
+      # TODO: adicionar setup-java@v4 quando entrar primeiro cliente java+*
+
+      # ---- Execução dos checks (genérico) ----
+
+      - name: install
+        run: |
+          CMD=$(python3 -c "import yaml; print((yaml.safe_load(open('.dev-autonomo.yml')).get('commands') or {}).get('install',''))")
+          if [ -n "$CMD" ]; then
+            echo "+ $CMD"
+            eval "$CMD"
+          else
+            echo "(skip: comando install não declarado)"
+          fi
+
+      - name: lint
+        run: |
+          CMD=$(python3 -c "import yaml; print((yaml.safe_load(open('.dev-autonomo.yml')).get('commands') or {}).get('lint',''))")
+          if [ -n "$CMD" ]; then
+            echo "+ $CMD"
+            eval "$CMD"
+          else
+            echo "(skip: comando lint não declarado)"
+          fi
+
+      - name: typecheck
+        run: |
+          CMD=$(python3 -c "import yaml; print((yaml.safe_load(open('.dev-autonomo.yml')).get('commands') or {}).get('typecheck',''))")
+          if [ -n "$CMD" ]; then
+            echo "+ $CMD"
+            eval "$CMD"
+          else
+            echo "(skip: comando typecheck não declarado)"
+          fi
+
+      - name: build
+        run: |
+          CMD=$(python3 -c "import yaml; print((yaml.safe_load(open('.dev-autonomo.yml')).get('commands') or {}).get('build',''))")
+          if [ -n "$CMD" ]; then
+            echo "+ $CMD"
+            eval "$CMD"
+          else
+            echo "(skip: comando build não declarado)"
+          fi
+
+      - name: test
+        run: |
+          CMD=$(python3 -c "import yaml; print((yaml.safe_load(open('.dev-autonomo.yml')).get('commands') or {}).get('test',''))")
+          if [ -n "$CMD" ]; then
+            echo "+ $CMD"
+            eval "$CMD"
+          else
+            echo "(skip: comando test não declarado)"
+          fi
