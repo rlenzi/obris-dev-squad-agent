@@ -449,3 +449,39 @@ export async function fetchSkillTemplate(id: string) {
   return data;
 }
 
+// === Agent Runs (LEO-26 / LEO-29) ===
+
+export type RunStatus = 'completed' | 'failed' | 'in_progress';
+
+export interface AgentRunItem {
+  task_id: string;
+  tool_calls_count: number;
+  total_cost_usd: string; // Decimal serializado como string
+  started_at: string;
+  ended_at: string | null;
+  status: RunStatus;
+}
+
+export interface AgentRunsPage {
+  items: AgentRunItem[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export async function fetchAgentRuns(
+  clientId: string,
+  agentId: string,
+  opts: { offset?: number; limit?: number } = {},
+): Promise<AgentRunsPage> {
+  const params = new URLSearchParams();
+  if (opts.offset !== undefined) params.set('offset', String(opts.offset));
+  if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+  const qs = params.toString();
+  const url = `/clients/${clientId}/agents/${agentId}/runs${qs ? '?' + qs : ''}`;
+  const { data } = await api.get<AgentRunsPage>(url, {
+    headers: { 'X-Client-Id': clientId },
+  });
+  return data;
+}
+
