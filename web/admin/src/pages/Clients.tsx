@@ -55,7 +55,7 @@ export default function ClientsPage() {
               <Plus className="size-4" /> Novo cliente
             </Button>
           </DialogTrigger>
-          <CreateClientDialog onSuccess={() => setOpenCreate(false)} />
+          {openCreate && <CreateClientDialog onSuccess={() => setOpenCreate(false)} />}
         </Dialog>
       </div>
 

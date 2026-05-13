@@ -41,6 +41,9 @@ class AgentRunContext:
     # Repo URL/label associado ao workspace (passa pelo enforcer.check_edit_file)
     workspace_repo: str | None = None
 
+    # Flags de comportamento / feature-flags
+    enable_auto_merge: bool = False  # proteção: merge automatico desabilitado por default
+
     # Estado mutavel da execução
     cost_usd_total: float = 0.0
     tools_invoked: list[str] = field(default_factory=list)

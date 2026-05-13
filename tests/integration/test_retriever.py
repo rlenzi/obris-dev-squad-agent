@@ -26,6 +26,7 @@ from dev_autonomo.knowledge.qdrant_client import (
 from dev_autonomo.knowledge.retriever import (
     KnowledgeRetriever,
     ManifestNotFoundError,
+    RetrievalResult,
 )
 from dev_autonomo.knowledge.voyage_client import VoyageEmbeddingClient
 
@@ -241,3 +242,43 @@ async def test_retriever_non_strict_mode_skips_filter(fixture_squad_no_manifest)
         except Exception:
             pass
         await store.close()
+
+
+@pytest.mark.asyncio
+async def test_retriever_graceful_on_missing_partition(fixture_squad_no_manifest):
+    """Partition inexistente no Qdrant deve retornar lista vazia sem traceback.
+
+    Cenario: squad existe no banco, mas a collection 'playbook_<hex>' nunca foi
+    criada no Qdrant (nenhuma mineracao aconteceu ainda). O retriever NAO deve
+    propagar UnexpectedResponse 404 — deve retornar RetrievalResult com hits=[]
+    e partition_missing=True, logando em WARNING.
+    """
+    _, squad_id = fixture_squad_no_manifest
+
+    # Garante que a collection NAO existe (nao faz ensure_collection nem seed)
+    store = QdrantKnowledgeStore()
+    collection_name = store.collection_name(KnowledgePartition.PLAYBOOK, squad_id)
+    try:
+        await store.drop_collection(KnowledgePartition.PLAYBOOK, squad_id)
+    except Exception:
+        pass  # pode nao existir, tudo bem
+    await store.close()
+
+    async with AsyncSessionLocal() as session:
+        retriever = KnowledgeRetriever(session=session)
+        # Nao deve levantar excecao
+        result = await retriever.retrieve(
+            squad_id=squad_id,
+            query="qualquer coisa",
+            partition=KnowledgePartition.PLAYBOOK,
+            strict_manifest=False,
+        )
+
+    assert isinstance(result, RetrievalResult)
+    assert result.hits == [], "Deve retornar lista vazia quando partition nao existe"
+    assert result.partition_missing is True, "partition_missing deve ser True"
+    assert result.filtered_by_manifest is False
+    assert result.raw_results_before_filter == 0
+    assert result.discarded_out_of_scope == 0
+    assert result.partition == KnowledgePartition.PLAYBOOK
+    assert result.squad_id == squad_id
