@@ -159,6 +159,117 @@ class GitHubCreatePRTool:
         )
 
 
+@dataclass
+class GitHubMergePRTool:
+    """Faz merge de um Pull Request no GitHub.
+
+    IMPORTANTE: esta tool está desabilitada por default via
+    ``ctx.enable_auto_merge`` (default ``False``). Se o flag não estiver
+    ativo, retorna erro imediato sem tocar na API.
+
+    Passa pelo ``enforcer.check_repo`` antes de qualquer chamada de rede.
+    """
+
+    name: str = "github_merge_pr"
+    description: str = (
+        "Faz merge de um Pull Request no GitHub do cliente. "
+        "Requer enable_auto_merge=True no contexto de execução; "
+        "caso contrário retorna erro 'auto-merge desabilitado nesta versao'."
+    )
+    input_schema: dict[str, Any] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        self.input_schema = {
+            "type": "object",
+            "properties": {
+                "pr_number": {
+                    "type": "integer",
+                    "description": "Número do Pull Request a ser mergeado.",
+                },
+                "merge_method": {
+                    "type": "string",
+                    "enum": ["squash", "merge", "rebase"],
+                    "default": "squash",
+                    "description": "Estratégia de merge. Default: 'squash'.",
+                },
+                "commit_title": {
+                    "type": "string",
+                    "description": "Título opcional do commit de merge.",
+                },
+            },
+            "required": ["pr_number"],
+        }
+
+    async def execute(self, ctx: AgentRunContext, inputs: dict[str, Any]) -> ToolResult:
+        # --- Guarda de segurança: auto-merge desabilitado por default ---
+        if not getattr(ctx, "enable_auto_merge", False):
+            return ToolResult.error(
+                "auto-merge desabilitado nesta versao",
+                code="auto_merge_disabled",
+            )
+
+        if not ctx.workspace_repo:
+            return ToolResult.error(
+                "workspace_repo ausente no contexto", code="no_workspace"
+            )
+
+        # --- Enforcer: squad pode operar neste repo? ---
+        auth = await ctx.enforcer.check_repo(ctx.workspace_repo)
+        if not auth.allowed:
+            return ToolResult.error(
+                auth.suggestion or "repo fora do escopo da squad",
+                code=auth.reason,
+            )
+
+        # --- Extrai owner/repo da URL ---
+        try:
+            owner, repo_name = _extract_owner_repo(ctx.workspace_repo)
+        except ValueError as exc:
+            return ToolResult.error(f"URL invalido: {exc}", code="bad_repo_url")
+
+        # --- Credencial GitHub ---
+        try:
+            token = await get_secret(
+                ctx.session,
+                client_id=ctx.client_id,
+                kind=SecretKind.GITHUB_TOKEN,
+            )
+        except CredentialNotFoundError as exc:
+            return ToolResult.error(str(exc), code="credential_missing")
+
+        await ctx.session.commit()  # persiste last_used_at
+
+        # --- Chama a API ---
+        pr_number: int = inputs["pr_number"]
+        merge_method: str = inputs.get("merge_method", "squash")
+        commit_title: str | None = inputs.get("commit_title")
+
+        client = GitHubClient(token=token)
+        try:
+            result = await client.merge_pull_request(
+                owner=owner,
+                repo=repo_name,
+                number=pr_number,
+                merge_method=merge_method,
+                commit_title=commit_title,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return ToolResult.error(
+                f"github API falhou: {exc}", code="github_error"
+            )
+
+        return ToolResult.ok(
+            {
+                "merged": result.get("merged", True),
+                "sha": result.get("sha"),
+                "message": result.get("message"),
+                "pr_number": pr_number,
+                "owner": owner,
+                "repo": repo_name,
+            }
+        )
+
+
 # ---- helpers ----
 
 
