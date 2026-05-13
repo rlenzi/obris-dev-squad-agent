@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
   Bot,
@@ -132,14 +132,26 @@ export default function AgentDetailPage() {
         </Card>
       )}
 
-      <RunsCard clientId={clientId!} agentId={agent.id} />
+      <RunsCard
+        clientId={clientId!}
+        squadId={squadId!}
+        agentId={agent.id}
+      />
     </div>
   );
 }
 
 const PAGE_SIZE = 20;
 
-function RunsCard({ clientId, agentId }: { clientId: string; agentId: string }) {
+function RunsCard({
+  clientId,
+  squadId,
+  agentId,
+}: {
+  clientId: string;
+  squadId: string;
+  agentId: string;
+}) {
   const [offset, setOffset] = useState(0);
 
   const runsQuery = useQuery({
@@ -200,7 +212,13 @@ function RunsCard({ clientId, agentId }: { clientId: string; agentId: string }) 
               </thead>
               <tbody>
                 {items.map((run) => (
-                  <RunRow key={run.task_id} run={run} />
+                  <RunRow
+                    key={run.task_id}
+                    run={run}
+                    clientId={clientId}
+                    squadId={squadId}
+                    agentId={agentId}
+                  />
                 ))}
               </tbody>
             </table>
@@ -232,7 +250,17 @@ function RunsCard({ clientId, agentId }: { clientId: string; agentId: string }) 
   );
 }
 
-function RunRow({ run }: { run: AgentRunItem }) {
+function RunRow({
+  run,
+  clientId,
+  squadId,
+  agentId,
+}: {
+  run: AgentRunItem;
+  clientId: string;
+  squadId: string;
+  agentId: string;
+}) {
   const cost = Number(run.total_cost_usd);
   const costFmt = isNaN(cost)
     ? run.total_cost_usd
@@ -246,28 +274,44 @@ function RunRow({ run }: { run: AgentRunItem }) {
   const endedAt = run.ended_at ? new Date(run.ended_at) : null;
   const durationMs = endedAt ? endedAt.getTime() - startedAt.getTime() : null;
 
+  const detailPath = `/clients/${clientId}/squads/${squadId}/agents/${agentId}/runs/${run.task_id}`;
+
   return (
-    <tr className="border-b last:border-b-0 hover:bg-muted/40">
+    <tr className="group border-b last:border-b-0 hover:bg-muted/40">
       <td className="py-2 pr-3">
-        <RunStatusBadge status={run.status} />
+        <Link to={detailPath} className="block">
+          <RunStatusBadge status={run.status} />
+        </Link>
       </td>
       <td className="py-2 pr-3">
-        <code
-          className="font-mono text-xs text-muted-foreground"
-          title={run.task_id}
-        >
-          {run.task_id.slice(0, 8)}…
-        </code>
+        <Link to={detailPath} className="block">
+          <code
+            className="font-mono text-xs text-muted-foreground group-hover:text-brand-500 group-hover:underline"
+            title={run.task_id}
+          >
+            {run.task_id.slice(0, 8)}…
+          </code>
+        </Link>
       </td>
       <td className="py-2 pr-3 text-right font-mono text-xs">
-        {run.tool_calls_count}
+        <Link to={detailPath} className="block">
+          {run.tool_calls_count}
+        </Link>
       </td>
-      <td className="py-2 pr-3 text-right font-mono text-xs">{costFmt}</td>
+      <td className="py-2 pr-3 text-right font-mono text-xs">
+        <Link to={detailPath} className="block">
+          {costFmt}
+        </Link>
+      </td>
       <td className="py-2 pr-3 text-xs text-muted-foreground">
-        {startedAt.toLocaleString('pt-BR')}
+        <Link to={detailPath} className="block">
+          {startedAt.toLocaleString('pt-BR')}
+        </Link>
       </td>
       <td className="py-2 text-xs text-muted-foreground">
-        {durationMs !== null ? formatDuration(durationMs) : '—'}
+        <Link to={detailPath} className="block">
+          {durationMs !== null ? formatDuration(durationMs) : '—'}
+        </Link>
       </td>
     </tr>
   );
