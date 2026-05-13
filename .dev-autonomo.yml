@@ -1,0 +1,60 @@
+# Declaração de como construir, testar, lintar e rodar este repo.
+#
+# Lido por:
+#   - Plataforma dev-autonomo (tool run_repo_check no Dev Agent)
+#   - GitHub Actions (.github/workflows/ci.yml)
+#
+# A plataforma é stack-agnóstica: ela apenas executa os comandos declarados
+# aqui. Cada repo do cliente declara seu próprio stack (python+fastapi,
+# node+express, java+spring, go, etc) e seus respectivos comandos.
+#
+# Comandos vazios são tratados como skip ("no command configured").
+
+version: 1
+
+# Identificador livre/descritivo do stack. Usado por UI e analytics, não
+# por execução.
+stack: "python+fastapi"
+
+# Imagem Docker base recomendada para executar os comandos em sandbox
+# isolado (futura: tool run_repo_check em modo containerizado, fase 2).
+# No CI atual, ignorada — workflow usa setup-python nativo do GH Actions.
+sandbox:
+  image: "python:3.11-slim"
+  workdir: "/work"
+
+# Comandos canônicos. Cada um pode ser executado pelo agente ou pelo CI
+# via `run_repo_check(<check_name>)`. Strings vazias = não disponível.
+commands:
+  # Prepara dependências. Roda 1x no setup do worktree/CI.
+  install: "uv sync --frozen"
+
+  # Linter rápido — feedback imediato pro Dev antes do commit.
+  lint: "uv run ruff check ."
+
+  # Validação de tipos estáticos. Vazio = skip (ainda não temos mypy
+  # configurado neste repo).
+  typecheck: ""
+
+  # Suite de testes. Usar -x pra falhar rápido no primeiro erro durante
+  # iterações do agente.
+  test: "uv run pytest -x --tb=short"
+
+  # Build de produção. Para FastAPI puro, não há build separado;
+  # frontend tem build próprio em web/admin (não coberto aqui ainda).
+  build: ""
+
+  # Comando pra subir em modo dev. Não roda no CI — referência pra docs
+  # e pra debug local do agente.
+  dev: "uv run uvicorn dev_autonomo.control_plane.app:app --reload --port 9000"
+
+# Diretórios que devem ser cacheados entre runs (CI e sandbox).
+# Reduz tempo de install em re-runs.
+cache:
+  - ".venv"
+  - "~/.cache/uv"
+
+# Health-check opcional pós-build/start (não rodado ainda).
+healthcheck:
+  url: "http://localhost:9000/health"
+  expected_status: 200
