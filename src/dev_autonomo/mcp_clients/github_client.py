@@ -124,6 +124,68 @@ class GitHubClient:
                     response=resp,
                 )
             return resp.json()
+    async def get_pull_request(
+        self, owner: str, repo: str, number: int
+    ) -> dict[str, Any]:
+        """Retorna metadados de um PR: title, body, state, draft, head_ref,
+        base_ref, mergeable, additions, deletions, changed_files."""
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+            resp = await client.get(
+                f"{GITHUB_API}/repos/{owner}/{repo}/pulls/{number}",
+                headers=self._headers,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return {
+                "title": data.get("title"),
+                "body": data.get("body"),
+                "state": data.get("state"),
+                "draft": data.get("draft", False),
+                "head_ref": data["head"]["ref"],
+                "base_ref": data["base"]["ref"],
+                "mergeable": data.get("mergeable"),
+                "additions": data.get("additions"),
+                "deletions": data.get("deletions"),
+                "changed_files": data.get("changed_files"),
+            }
+
+    async def list_pull_request_files(
+        self, owner: str, repo: str, number: int
+    ) -> list[dict[str, Any]]:
+        """Retorna lista de arquivos alterados no PR.
+
+        Cada item contém: filename, status, additions, deletions e patch
+        truncado em 8 KB por arquivo (para evitar payloads gigantes).
+        Pagina automaticamente até 300 arquivos (3 páginas de 100).
+        """
+        _PATCH_LIMIT = 8 * 1024  # 8 KB por arquivo
+        _MAX_PAGES = 3
+        files: list[dict[str, Any]] = []
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+            for page in range(1, _MAX_PAGES + 1):
+                resp = await client.get(
+                    f"{GITHUB_API}/repos/{owner}/{repo}/pulls/{number}/files",
+                    headers=self._headers,
+                    params={"per_page": 100, "page": page},
+                )
+                resp.raise_for_status()
+                batch = resp.json()
+                for item in batch:
+                    patch = item.get("patch", "") or ""
+                    if len(patch) > _PATCH_LIMIT:
+                        patch = patch[:_PATCH_LIMIT] + "\n... [patch truncado em 8 KB]"
+                    files.append(
+                        {
+                            "filename": item.get("filename"),
+                            "status": item.get("status"),
+                            "additions": item.get("additions"),
+                            "deletions": item.get("deletions"),
+                            "patch": patch,
+                        }
+                    )
+                if len(batch) < 100:
+                    break
+        return files
 
     async def close_pull_request(
         self, owner: str, repo: str, number: int
@@ -136,4 +198,55 @@ class GitHubClient:
                 json={"state": "closed"},
             )
             resp.raise_for_status()
+            return resp.json()
+
+    async def create_pull_request_review(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        event: str,
+        body: str,
+        comments: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Submete uma review num PR via POST /repos/{owner}/{repo}/pulls/{number}/reviews.
+
+        Args:
+            owner:    Dono do repositório (usuário ou organização).
+            repo:     Nome do repositório.
+            number:   Número do Pull Request.
+            event:    Ação da review — um de 'APPROVE', 'REQUEST_CHANGES' ou 'COMMENT'.
+            body:     Comentário geral da review.
+            comments: Lista opcional de comentários inline. Cada item deve conter
+                      pelo menos ``path``, ``position`` (ou ``line``) e ``body``.
+
+        Returns:
+            dict com o payload JSON retornado pela API do GitHub.
+
+        Raises:
+            ValueError: se ``event`` não for um valor permitido.
+            httpx.HTTPStatusError: se a API retornar status >= 400.
+        """
+        allowed_events = {"APPROVE", "REQUEST_CHANGES", "COMMENT"}
+        if event not in allowed_events:
+            raise ValueError(
+                f"event invalido: '{event}'. Deve ser um de {sorted(allowed_events)}."
+            )
+
+        payload: dict[str, Any] = {"event": event, "body": body}
+        if comments:
+            payload["comments"] = comments
+
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+            resp = await client.post(
+                f"{GITHUB_API}/repos/{owner}/{repo}/pulls/{number}/reviews",
+                headers=self._headers,
+                json=payload,
+            )
+            if resp.status_code >= 400:
+                raise httpx.HTTPStatusError(
+                    f"GitHub API erro {resp.status_code}: {resp.text[:500]}",
+                    request=resp.request,
+                    response=resp,
+                )
             return resp.json()
