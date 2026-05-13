@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -7,12 +8,13 @@ import {
   Clock,
   CodeXml,
   DollarSign,
+  ExternalLink,
+  GitPullRequest,
   Hash,
   ListChecks,
 } from 'lucide-react';
 import {
   fetchAgentRunDetail,
-  type AgentRunDetail,
   type ExternalCallItem,
   type RunStatus,
 } from '@/lib/api';
@@ -26,6 +28,8 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 
+const CALLS_PAGE_SIZE = 100;
+
 export default function AgentRunDetailPage() {
   const { clientId, squadId, agentId, taskId } = useParams<{
     clientId: string;
@@ -34,15 +38,20 @@ export default function AgentRunDetailPage() {
     taskId: string;
   }>();
   const navigate = useNavigate();
+  const [callsOffset, setCallsOffset] = useState(0);
 
   const runQuery = useQuery({
-    queryKey: ['agent-run-detail', clientId, agentId, taskId],
+    queryKey: ['agent-run-detail', clientId, agentId, taskId, callsOffset],
     queryFn: () =>
-      fetchAgentRunDetail(clientId!, agentId!, taskId!),
+      fetchAgentRunDetail(clientId!, agentId!, taskId!, {
+        offset: callsOffset,
+        limit: CALLS_PAGE_SIZE,
+      }),
     enabled: Boolean(clientId && agentId && taskId),
+    placeholderData: (prev) => prev,
   });
 
-  if (runQuery.isLoading) {
+  if (runQuery.isLoading && !runQuery.data) {
     return <div className="text-muted-foreground">Carregando execução…</div>;
   }
   if (runQuery.isError) {
@@ -64,6 +73,10 @@ export default function AgentRunDetailPage() {
         currency: 'USD',
         minimumFractionDigits: 4,
       });
+
+  const callsTotal = run.calls_total;
+  const callsStart = run.calls_offset;
+  const callsEnd = Math.min(callsStart + run.calls.length, callsTotal);
 
   return (
     <div className="space-y-6">
@@ -90,10 +103,38 @@ export default function AgentRunDetailPage() {
             <h1 className="text-2xl font-semibold tracking-tight">
               Execução {run.jira_issue_key ?? run.task_id.slice(0, 8)}
             </h1>
-            <div className="mt-1 flex items-center gap-2 text-muted-foreground">
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-muted-foreground">
               <RunStatusBadge status={run.status} />
-              {run.title && <span className="text-sm">· {run.title}</span>}
+              {run.title && (
+                <span className="text-sm">· {run.title}</span>
+              )}
             </div>
+            {(run.jira_issue_url || run.pr_search_url) && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {run.jira_issue_url && (
+                  <a
+                    href={run.jira_issue_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-md border bg-card px-2 py-1 text-xs hover:bg-muted"
+                  >
+                    <ExternalLink className="size-3" />
+                    Abrir no Jira
+                  </a>
+                )}
+                {run.pr_search_url && (
+                  <a
+                    href={run.pr_search_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-md border bg-card px-2 py-1 text-xs hover:bg-muted"
+                  >
+                    <GitPullRequest className="size-3" />
+                    Ver PR no GitHub
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div className="text-right text-xs text-muted-foreground">
@@ -128,7 +169,7 @@ export default function AgentRunDetailPage() {
         />
       </div>
 
-      {/* Cache + erros (se houver) */}
+      {/* Cache + erros */}
       {(run.total_cache_creation_tokens > 0 ||
         run.total_cache_read_tokens > 0 ||
         run.error_count > 0) && (
@@ -171,19 +212,50 @@ export default function AgentRunDetailPage() {
       <Card>
         <CardHeader className="flex flex-row items-center gap-2 space-y-0">
           <CodeXml className="size-5 text-brand-500" />
-          <div>
+          <div className="flex-1">
             <CardTitle className="text-base">Timeline de chamadas</CardTitle>
             <CardDescription>
               Cada chamada à API Anthropic/Voyage feita durante este run, em
               ordem cronológica.
             </CardDescription>
           </div>
+          {callsTotal > 0 && (
+            <span className="text-xs text-muted-foreground">
+              {callsStart + 1}–{callsEnd} de {callsTotal}
+            </span>
+          )}
         </CardHeader>
         <CardContent>
           <CallsTable
             calls={run.calls}
             startedAt={new Date(run.started_at)}
+            startOffset={callsStart}
           />
+          {callsTotal > CALLS_PAGE_SIZE && (
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={callsOffset === 0 || runQuery.isFetching}
+                onClick={() =>
+                  setCallsOffset(Math.max(0, callsOffset - CALLS_PAGE_SIZE))
+                }
+              >
+                Anterior
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={
+                  callsOffset + CALLS_PAGE_SIZE >= callsTotal ||
+                  runQuery.isFetching
+                }
+                onClick={() => setCallsOffset(callsOffset + CALLS_PAGE_SIZE)}
+              >
+                Próxima
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -217,9 +289,11 @@ function StatCard({
 function CallsTable({
   calls,
   startedAt,
+  startOffset,
 }: {
   calls: ExternalCallItem[];
   startedAt: Date;
+  startOffset: number;
 }) {
   if (calls.length === 0) {
     return (
@@ -263,7 +337,9 @@ function CallsTable({
                   (c.error ? 'bg-destructive/5' : '')
                 }
               >
-                <td className="py-2 pr-3 font-mono text-xs">{i + 1}</td>
+                <td className="py-2 pr-3 font-mono text-xs">
+                  {startOffset + i + 1}
+                </td>
                 <td className="py-2 pr-3 font-mono text-xs text-muted-foreground">
                   +{formatDuration(offsetMs)}
                 </td>

@@ -1,7 +1,6 @@
 """Router GET /clients/{cid}/agents/{aid}/runs e .../runs/{task_id}.
 
-Lista paginada de runs do agente + detalhe de UM run específico.
-Requer autenticação e contexto de client via ``require_client_context``.
+Lista paginada de runs do agente + detalhe (com timeline de chamadas paginada).
 """
 
 from __future__ import annotations
@@ -33,23 +32,16 @@ router = APIRouter(tags=["client / agent runs"])
     "/clients/{cid}/agents/{aid}/runs",
     response_model=AgentRunsPage,
     summary="Lista execuções de um agente",
-    description=(
-        "Retorna uma página de execuções (runs) do agente `aid` pertencente "
-        "ao client `cid`. O client autenticado deve ser o dono do agente. "
-        "Retorna 404 se o agente não existir ou não pertencer ao client."
-    ),
 )
 async def list_agent_runs_endpoint(
     cid: UUID,
     aid: UUID,
-    offset: int = Query(0, ge=0, description="Posição inicial da página."),
-    limit: int = Query(
-        50, ge=1, le=200, description="Número máximo de itens retornados (max 200)."
-    ),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     ctx: tuple[Client, UserRole] = Depends(require_client_context),
     session: AsyncSession = Depends(get_session),
 ) -> AgentRunsPage:
-    """Endpoint principal: lista runs paginadas do agente `aid` do client `cid`."""
+    """Lista runs paginadas do agente `aid` do client `cid`."""
     client, _ = ctx
 
     if client.id != cid:
@@ -78,22 +70,29 @@ async def list_agent_runs_endpoint(
 @router.get(
     "/clients/{cid}/agents/{aid}/runs/{task_id}",
     response_model=AgentRunDetail,
-    summary="Detalhe de um run específico",
+    summary="Detalhe de um run específico (timeline paginada)",
     description=(
-        "Retorna agregados + timeline completa de chamadas externas para o "
-        "run identificado por `task_id`. Inclui custos, tokens, latência e "
-        "erros de cada chamada Claude/Voyage. Retorna 404 se o run não "
-        "existir ou o agente não pertencer ao client."
+        "Retorna agregados + janela paginada de chamadas externas para o run "
+        "`task_id`. Os totais (custo, tokens, error_count) refletem o RUN "
+        "COMPLETO, mas a lista `calls` é restrita a `[offset, offset+limit)`. "
+        "`calls_total` indica o total disponível para paginar no frontend."
     ),
 )
 async def get_agent_run_endpoint(
     cid: UUID,
     aid: UUID,
     task_id: UUID,
+    offset: int = Query(0, ge=0, description="Início da janela de calls."),
+    limit: int = Query(
+        100,
+        ge=1,
+        le=500,
+        description="Tamanho da janela de calls (max 500).",
+    ),
     ctx: tuple[Client, UserRole] = Depends(require_client_context),
     session: AsyncSession = Depends(get_session),
 ) -> AgentRunDetail:
-    """Endpoint de drill-down: detalhe de um run específico do agente."""
+    """Drill-down: detalhe de um run específico com timeline paginada."""
     client, _ = ctx
 
     if client.id != cid:
@@ -107,6 +106,8 @@ async def get_agent_run_endpoint(
         client_id=cid,
         agent_instance_id=aid,
         task_id=task_id,
+        offset=offset,
+        limit=limit,
     )
 
     if result is None:
