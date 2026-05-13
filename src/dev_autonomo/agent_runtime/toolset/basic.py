@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -179,7 +180,9 @@ class SignalCompleteTool:
     description: str = (
         "Sinaliza que a task atual esta CONCLUIDA. Chame essa tool quando voce "
         "tiver entregue tudo que a task pedia. Apos esta chamada, nenhuma outra "
-        "acao sera executada nesta task."
+        "acao sera executada nesta task. ATENCAO: se o contexto tem workspace_root, "
+        "a tool valida que nao ha commits locais sem push — recusa a conclusao se "
+        "houver pendencia. Faca git_push e github_create_pr antes."
     )
     input_schema: dict[str, Any] = None  # type: ignore[assignment]
 
@@ -201,6 +204,17 @@ class SignalCompleteTool:
         }
 
     async def execute(self, ctx: AgentRunContext, inputs: dict[str, Any]) -> ToolResult:
+        # LEO-52: agentes Dev as vezes chamam signal_complete sem dar git_push,
+        # deixando o trabalho em commit local sem PR. Antes de aceitar a
+        # conclusao, valida que tudo foi pushado pro remote.
+        if ctx.workspace_root is not None:
+            unpushed_reason = await _check_unpushed_work(ctx.workspace_root)
+            if unpushed_reason is not None:
+                return ToolResult.error(
+                    f"signal_complete recusado: {unpushed_reason}. "
+                    f"Execute git_push e github_create_pr antes de concluir a task.",
+                    code="unpushed_work",
+                )
         return ToolResult.ok(
             {
                 "completed": True,
@@ -208,3 +222,60 @@ class SignalCompleteTool:
                 "deliverables": inputs.get("deliverables", []),
             }
         )
+
+
+async def _check_unpushed_work(workspace_root: Path) -> str | None:
+    """Verifica se há trabalho local (commits ou changes) ainda não pushado.
+
+    Retorna mensagem descritiva quando há pendência, ou None quando o workspace
+    está sincronizado com o remote. Em caso de erro inesperado (ex: sem repo
+    git), retorna None — não bloqueia.
+    """
+    # 1. Working tree limpo? (sem arquivos modificados/uncommited)
+    rc, status_out, _ = await _run_git(workspace_root, ["status", "--porcelain"])
+    if rc == 0 and status_out.strip():
+        files = [ln for ln in status_out.strip().splitlines() if ln.strip()]
+        return f"working tree tem {len(files)} arquivo(s) modificado(s) sem commit"
+
+    # 2. Branch tem upstream configurado? (push -u ja feito)
+    rc, _, _ = await _run_git(workspace_root, ["rev-parse", "--abbrev-ref", "@{u}"])
+    if rc != 0:
+        # Sem upstream — branch nunca foi pushada
+        # Confirma que há pelo menos 1 commit local (senão é repo vazio)
+        rc_log, log_out, _ = await _run_git(workspace_root, ["log", "-1", "--oneline"])
+        if rc_log == 0 and log_out.strip():
+            return "branch local nunca foi pushada para o remote (sem upstream configurado)"
+        return None  # repo sem commits — nao bloqueia
+
+    # 3. Há commits locais não-pushados? (HEAD ahead of upstream)
+    rc, count_out, _ = await _run_git(
+        workspace_root, ["rev-list", "--count", "@{u}..HEAD"]
+    )
+    if rc == 0:
+        try:
+            n = int(count_out.strip())
+        except ValueError:
+            n = 0
+        if n > 0:
+            return f"{n} commit(s) local(is) ainda nao pushado(s) para o remote"
+
+    return None
+
+
+async def _run_git(
+    cwd: Path, args: list[str]
+) -> tuple[int, str, str]:
+    """Executa `git <args>` em cwd e retorna (returncode, stdout, stderr)."""
+    proc = await asyncio.create_subprocess_exec(
+        "git",
+        *args,
+        cwd=str(cwd),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    return (
+        proc.returncode or 0,
+        stdout.decode("utf-8", errors="replace"),
+        stderr.decode("utf-8", errors="replace"),
+    )

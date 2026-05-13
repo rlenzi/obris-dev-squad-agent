@@ -96,7 +96,9 @@ class GitHubCreatePRTool:
     name: str = "github_create_pr"
     description: str = (
         "Abre um Pull Request no GitHub do cliente. Use depois de commit + push. "
-        "Body deve descrever o que mudou, motivo, e como testar (1-3 paragrafos)."
+        "Body deve descrever o que mudou, motivo, e como testar (1-3 paragrafos). "
+        "ATENCAO: a tool valida que a branch ja foi pushada — recusa criar PR se "
+        "branch local nao existe no remote ou tem commits unpushed."
     )
     input_schema: dict[str, Any] = None  # type: ignore[assignment]
 
@@ -138,6 +140,35 @@ class GitHubCreatePRTool:
         if rc != 0:
             return ToolResult.error(f"git rev-parse falhou: {err}", code="git_error")
         head_branch = branch_out.strip()
+
+        # LEO-39: defesa contra Dev pular o git_push e ir direto pro create_pr.
+        # Antes de criar o PR, garante que a branch existe no remote e não tem
+        # commits locais pendentes.
+        await _run(ctx.workspace_root, ["fetch", "origin"])
+        rc_v, _, _ = await _run(
+            ctx.workspace_root, ["rev-parse", "--verify", f"origin/{head_branch}"]
+        )
+        if rc_v != 0:
+            return ToolResult.error(
+                f"branch '{head_branch}' nao existe no remote. "
+                f"Execute git_push antes de chamar github_create_pr.",
+                code="branch_not_pushed",
+            )
+        rc_c, count_out, _ = await _run(
+            ctx.workspace_root,
+            ["rev-list", "--count", f"origin/{head_branch}..HEAD"],
+        )
+        if rc_c == 0:
+            try:
+                ahead = int(count_out.strip())
+            except ValueError:
+                ahead = 0
+            if ahead > 0:
+                return ToolResult.error(
+                    f"branch local tem {ahead} commit(s) ainda nao pushado(s). "
+                    f"Execute git_push antes de chamar github_create_pr.",
+                    code="unpushed_commits",
+                )
 
         try:
             owner, repo_name = _extract_owner_repo(ctx.workspace_repo)
