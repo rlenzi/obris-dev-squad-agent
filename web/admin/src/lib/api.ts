@@ -508,6 +508,8 @@ export interface AgentRunDetail {
   agent_instance_id: string;
   title: string | null;
   jira_issue_key: string | null;
+  jira_issue_url: string | null;
+  pr_search_url: string | null;
   status: RunStatus;
   started_at: string;
   ended_at: string | null;
@@ -520,15 +522,23 @@ export interface AgentRunDetail {
   total_cache_read_tokens: number;
   error_count: number;
   calls: ExternalCallItem[];
+  calls_total: number;
+  calls_offset: number;
+  calls_limit: number;
 }
 
 export async function fetchAgentRunDetail(
   clientId: string,
   agentId: string,
   taskId: string,
+  opts: { offset?: number; limit?: number } = {},
 ): Promise<AgentRunDetail> {
+  const params = new URLSearchParams();
+  if (opts.offset !== undefined) params.set('offset', String(opts.offset));
+  if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+  const qs = params.toString();
   const { data } = await api.get<AgentRunDetail>(
-    `/clients/${clientId}/agents/${agentId}/runs/${taskId}`,
+    `/clients/${clientId}/agents/${agentId}/runs/${taskId}${qs ? '?' + qs : ''}`,
     { headers: { 'X-Client-Id': clientId } },
   );
   return data;
