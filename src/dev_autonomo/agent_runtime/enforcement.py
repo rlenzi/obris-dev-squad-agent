@@ -160,10 +160,15 @@ class ManifestEnforcer:
             schemas = list(db_owns.get("schemas", []))
         elif isinstance(db_owns, list):
             schemas = list(db_owns)
-        if schema_name.lower() in [s.lower() for s in schemas]:
-            return AuthorizationResult(
-                True, "owned", matched_rule=f"owns.database:{schema_name}"
-            )
+        # Usa fnmatch (glob) com comparacao case-insensitive, igualando o
+        # comportamento de check_event_publish e check_api_publish.
+        # Ex: "pay_*" autoriza "pay_charges", "*" autoriza qualquer schema.
+        schema_lower = schema_name.lower()
+        for pattern in schemas:
+            if fnmatch.fnmatchcase(schema_lower, pattern.lower()):
+                return AuthorizationResult(
+                    True, "owned", matched_rule=f"owns.database:{pattern}"
+                )
         return AuthorizationResult(
             False,
             "out_of_scope",
