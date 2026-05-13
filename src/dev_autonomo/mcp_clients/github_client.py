@@ -84,6 +84,46 @@ class GitHubClient:
                 raw=data,
             )
 
+    async def merge_pull_request(
+        self,
+        owner: str,
+        repo: str,
+        number: int,
+        merge_method: str = "squash",
+        commit_title: str | None = None,
+    ) -> dict[str, Any]:
+        """Faz merge de um PR via PUT /repos/{owner}/{repo}/pulls/{number}/merge.
+
+        Args:
+            owner: Dono do repositório (usuário ou org).
+            repo: Nome do repositório.
+            number: Número do PR a ser mergeado.
+            merge_method: Estratégia de merge — 'squash', 'merge' ou 'rebase'.
+                          Default: 'squash'.
+            commit_title: Título opcional do commit de merge.
+
+        Returns:
+            Dict com a resposta da GitHub API (sha, merged, message).
+
+        Raises:
+            httpx.HTTPStatusError: Se a API retornar status >= 400.
+        """
+        payload: dict[str, Any] = {"merge_method": merge_method}
+        if commit_title is not None:
+            payload["commit_title"] = commit_title
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+            resp = await client.put(
+                f"{GITHUB_API}/repos/{owner}/{repo}/pulls/{number}/merge",
+                headers=self._headers,
+                json=payload,
+            )
+            if resp.status_code >= 400:
+                raise httpx.HTTPStatusError(
+                    f"GitHub API erro {resp.status_code}: {resp.text[:500]}",
+                    request=resp.request,
+                    response=resp,
+                )
+            return resp.json()
     async def get_pull_request(
         self, owner: str, repo: str, number: int
     ) -> dict[str, Any]:

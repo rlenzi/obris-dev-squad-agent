@@ -1,10 +1,11 @@
-"""Tools de integração GitHub: git_push + github_create_pr + github_get_pr + github_review_pr.
+"""Tools de integração GitHub: git_push + github_create_pr + github_get_pr + github_review_pr + github_merge_pr.
 
 git_push: empurra a branch atual pro remote origin (que ja foi configurado
           com token pelo worktree manager).
 github_create_pr: abre PR via GitHub API com o token do vault do client.
 github_get_pr: lê metadados + lista de arquivos de um PR existente.
 github_review_pr: submete uma review (APPROVE / REQUEST_CHANGES / COMMENT) num PR existente.
+github_merge_pr: faz merge de um PR — desabilitado por default via ctx.enable_auto_merge.
 """
 
 from __future__ import annotations
@@ -345,6 +346,109 @@ class GitHubReviewPRTool:
                 "decision": decision,
                 "event": event,
                 "html_url": data.get("html_url"),
+                "owner": owner,
+                "repo": repo_name,
+            }
+        )
+
+
+@dataclass
+class GitHubMergePRTool:
+    """Faz merge de um Pull Request no GitHub.
+
+    Desabilitada por default via ctx.enable_auto_merge (False).
+    Passa por enforcer.check_repo antes de qualquer chamada de rede.
+    """
+
+    name: str = "github_merge_pr"
+    description: str = (
+        "Faz merge de um Pull Request no GitHub do cliente. "
+        "Requer enable_auto_merge=True no contexto de execução; "
+        "caso contrário retorna erro 'auto-merge desabilitado nesta versao'."
+    )
+    input_schema: dict[str, Any] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        self.input_schema = {
+            "type": "object",
+            "properties": {
+                "pr_number": {
+                    "type": "integer",
+                    "description": "Número do Pull Request a ser mergeado.",
+                },
+                "merge_method": {
+                    "type": "string",
+                    "enum": ["squash", "merge", "rebase"],
+                    "default": "squash",
+                    "description": "Estratégia de merge. Default: 'squash'.",
+                },
+                "commit_title": {
+                    "type": "string",
+                    "description": "Título opcional do commit de merge.",
+                },
+            },
+            "required": ["pr_number"],
+        }
+
+    async def execute(self, ctx: AgentRunContext, inputs: dict[str, Any]) -> ToolResult:
+        if not getattr(ctx, "enable_auto_merge", False):
+            return ToolResult.error(
+                "auto-merge desabilitado nesta versao",
+                code="auto_merge_disabled",
+            )
+
+        if not ctx.workspace_repo:
+            return ToolResult.error(
+                "workspace_repo ausente no contexto", code="no_workspace"
+            )
+
+        auth = await ctx.enforcer.check_repo(ctx.workspace_repo)
+        if not auth.allowed:
+            return ToolResult.error(
+                auth.suggestion or "repo fora do escopo da squad",
+                code=auth.reason,
+            )
+
+        try:
+            owner, repo_name = _extract_owner_repo(ctx.workspace_repo)
+        except ValueError as exc:
+            return ToolResult.error(f"URL invalido: {exc}", code="bad_repo_url")
+
+        try:
+            token = await get_secret(
+                ctx.session,
+                client_id=ctx.client_id,
+                kind=SecretKind.GITHUB_TOKEN,
+            )
+        except CredentialNotFoundError as exc:
+            return ToolResult.error(str(exc), code="credential_missing")
+
+        await ctx.session.commit()
+
+        pr_number: int = int(inputs["pr_number"])
+        merge_method: str = inputs.get("merge_method", "squash")
+        commit_title: str | None = inputs.get("commit_title")
+
+        client = GitHubClient(token=token)
+        try:
+            result = await client.merge_pull_request(
+                owner=owner,
+                repo=repo_name,
+                number=pr_number,
+                merge_method=merge_method,
+                commit_title=commit_title,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return ToolResult.error(
+                f"github API falhou: {exc}", code="github_error"
+            )
+
+        return ToolResult.ok(
+            {
+                "merged": result.get("merged", True),
+                "sha": result.get("sha"),
+                "message": result.get("message"),
+                "pr_number": pr_number,
                 "owner": owner,
                 "repo": repo_name,
             }
