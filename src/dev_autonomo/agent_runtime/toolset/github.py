@@ -1,8 +1,9 @@
-"""Tools de integração GitHub: git_push + github_create_pr.
+"""Tools de integração GitHub: git_push + github_create_pr + github_get_pr.
 
 git_push: empurra a branch atual pro remote origin (que ja foi configurado
           com token pelo worktree manager).
 github_create_pr: abre PR via GitHub API com o token do vault do client.
+github_get_pr: lê metadados + lista de arquivos de um PR existente.
 """
 
 from __future__ import annotations
@@ -155,6 +156,82 @@ class GitHubCreatePRTool:
                 "base": pr.base_ref,
                 "owner": owner,
                 "repo": repo_name,
+            }
+        )
+
+
+@dataclass
+class GitHubGetPRTool:
+    name: str = "github_get_pr"
+    description: str = (
+        "Lê metadados e lista de arquivos alterados de um Pull Request existente. "
+        "Retorna title, body, state, draft, head_ref, base_ref, mergeable, "
+        "additions, deletions, changed_files e a lista de arquivos com patch "
+        "truncado em 8 KB por arquivo."
+    )
+    input_schema: dict[str, Any] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        self.input_schema = {
+            "type": "object",
+            "properties": {
+                "pr_number": {
+                    "type": "integer",
+                    "description": "Número do Pull Request a consultar.",
+                },
+            },
+            "required": ["pr_number"],
+        }
+
+    async def execute(self, ctx: AgentRunContext, inputs: dict[str, Any]) -> ToolResult:
+        if not ctx.workspace_repo:
+            return ToolResult.error(
+                "workspace_repo ausente no contexto", code="no_workspace"
+            )
+
+        # Extrai owner/repo do workspace_repo
+        try:
+            owner, repo_name = _extract_owner_repo(ctx.workspace_repo)
+        except ValueError as exc:
+            return ToolResult.error(f"URL invalido: {exc}", code="bad_repo_url")
+
+        # Verifica se a squad tem acesso ao repo via enforcer
+        authz = await ctx.enforcer.check_repo(ctx.workspace_repo)
+        if not authz.allowed:
+            return ToolResult.error(
+                authz.suggestion or "repo nao autorizado pelo manifest",
+                code=authz.reason,
+            )
+
+        # Pega token GitHub do vault
+        try:
+            token = await get_secret(
+                ctx.session,
+                client_id=ctx.client_id,
+                kind=SecretKind.GITHUB_TOKEN,
+            )
+        except CredentialNotFoundError as exc:
+            return ToolResult.error(str(exc), code="credential_missing")
+
+        await ctx.session.commit()  # persiste last_used_at
+
+        pr_number: int = int(inputs["pr_number"])
+        client = GitHubClient(token=token)
+        try:
+            pr_data = await client.get_pull_request(owner, repo_name, pr_number)
+            files = await client.list_pull_request_files(owner, repo_name, pr_number)
+        except Exception as exc:  # noqa: BLE001
+            return ToolResult.error(
+                f"github API falhou: {exc}", code="github_error"
+            )
+
+        return ToolResult.ok(
+            {
+                "pr_number": pr_number,
+                "owner": owner,
+                "repo": repo_name,
+                **pr_data,
+                "files": files,
             }
         )
 
