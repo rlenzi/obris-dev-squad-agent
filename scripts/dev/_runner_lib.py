@@ -39,7 +39,7 @@ from dev_autonomo.agent_runtime.worktree import GitWorktreeManager
 from dev_autonomo.common.claude_client import ClaudeClient
 from dev_autonomo.common.credentials_store import get_secret
 from dev_autonomo.common.enums import SecretKind
-from dev_autonomo.db.models import AgentInstance, Client, Squad
+from dev_autonomo.db.models import AgentInstance, Client, Squad, Task
 from dev_autonomo.db.session import session_scope
 from dev_autonomo.knowledge.indexer import CodeIndexer
 from dev_autonomo.knowledge.qdrant_client import (
@@ -177,6 +177,57 @@ async def _resolve_identities(
     return client, squad, agent
 
 
+async def _ensure_task(
+    session: AsyncSession,
+    client: Client,
+    squad: Squad,
+    agent: AgentInstance,
+    issue_key: str,
+) -> Task:
+    """Cria ou recupera a Task local que representa este run.
+
+    Cada run de agente é vinculado a uma row em ``tasks`` (espelho local da
+    issue Jira) — assim ``external_api_calls.task_id`` fica preenchido e o
+    endpoint /clients/{cid}/agents/{aid}/runs consegue agrupar as chamadas
+    Claude em runs distintos.
+
+    Idempotente via UniqueConstraint(jira_workspace_url, jira_issue_key).
+    Para Reviewer (issue_key = número de PR), a chave fica ``PR-{n}`` —
+    não bate com Jira real, mas serve como identificador único do run.
+    """
+    is_pr_review = issue_key.isdigit()
+    jira_key = f"PR-{issue_key}" if is_pr_review else issue_key
+    title = f"Review PR #{issue_key}" if is_pr_review else f"Issue {issue_key}"
+
+    existing = (
+        await session.execute(
+            select(Task).where(
+                Task.client_id == client.id,
+                Task.jira_workspace_url == client.jira_workspace_url,
+                Task.jira_issue_key == jira_key,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if existing is not None:
+        # Atualiza assigned_agent_id se mudou de agente
+        if existing.assigned_agent_id != agent.id:
+            existing.assigned_agent_id = agent.id
+        return existing
+
+    task = Task(
+        client_id=client.id,
+        squad_id=squad.id,
+        jira_workspace_url=client.jira_workspace_url,
+        jira_issue_key=jira_key,
+        title=title,
+        assigned_agent_id=agent.id,
+    )
+    session.add(task)
+    await session.flush()
+    return task
+
+
 # ---------------------------------------------------------------------------
 # Knowledge Hub
 # ---------------------------------------------------------------------------
@@ -228,10 +279,17 @@ async def run_task(spec: TaskSpec, issue_key: str) -> None:
     async with session_scope() as session:
         client, squad, agent = await _resolve_identities(session, spec)
 
+        # Cria/recupera Task local (espelho do Jira) para esse run.
+        # Necessário para que external_api_calls.task_id seja preenchido e o
+        # endpoint /runs do admin consiga agrupar.
+        task = await _ensure_task(session, client, squad, agent, issue_key)
+        await session.commit()
+
         print(f"\nCliente:  {client.name} ({client.slug})")
         print(f"Squad:    {squad.name}")
         print(f"Agente:   {agent.name}")
         print(f"Issue:    {issue_key}")
+        print(f"Task:     {task.id}")
 
         # Knowledge Hub (Dev)
         worktree_handle = None
@@ -277,7 +335,7 @@ async def run_task(spec: TaskSpec, issue_key: str) -> None:
             client_id=client.id,
             squad_id=squad.id,
             agent_instance_id=agent.id,
-            task_id=None,
+            task_id=task.id,
             session=session,
             claude=ClaudeClient(session=session),
             voyage=voyage,
