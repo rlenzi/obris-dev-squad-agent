@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -6,15 +7,19 @@ import {
   Clock,
   Cpu,
   FileCode,
+  History,
   KeyRound,
   Layers,
   Wrench,
 } from 'lucide-react';
 import {
+  fetchAgentRuns,
   fetchAgents,
   fetchSkillTemplate,
   fetchSquad,
   type AgentInstance,
+  type AgentRunItem,
+  type RunStatus,
   type SkillTemplate,
 } from '@/lib/api';
 import { Badge } from '@/components/ui/badge';
@@ -126,8 +131,165 @@ export default function AgentDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      <RunsCard clientId={clientId!} agentId={agent.id} />
     </div>
   );
+}
+
+const PAGE_SIZE = 20;
+
+function RunsCard({ clientId, agentId }: { clientId: string; agentId: string }) {
+  const [offset, setOffset] = useState(0);
+
+  const runsQuery = useQuery({
+    queryKey: ['agent-runs', clientId, agentId, offset],
+    queryFn: () =>
+      fetchAgentRuns(clientId, agentId, { offset, limit: PAGE_SIZE }),
+    placeholderData: (prev) => prev,
+  });
+
+  const page = runsQuery.data;
+  const total = page?.total ?? 0;
+  const items = page?.items ?? [];
+  const pageEnd = Math.min(offset + items.length, total);
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center gap-2 space-y-0">
+        <History className="size-5 text-brand-500" />
+        <div className="flex-1">
+          <CardTitle className="text-base">Histórico de execuções</CardTitle>
+          <CardDescription>
+            Runs do agente agrupados por task_id. Mais recentes primeiro.
+          </CardDescription>
+        </div>
+        {total > 0 && (
+          <span className="text-xs text-muted-foreground">
+            {offset + 1}–{pageEnd} de {total}
+          </span>
+        )}
+      </CardHeader>
+      <CardContent>
+        {runsQuery.isError && (
+          <p className="text-sm text-destructive">
+            Erro ao carregar execuções:{' '}
+            {(runsQuery.error as Error)?.message ?? 'desconhecido'}
+          </p>
+        )}
+        {runsQuery.isLoading && !page && (
+          <p className="text-sm text-muted-foreground">Carregando…</p>
+        )}
+        {page && items.length === 0 && (
+          <p className="text-sm italic text-muted-foreground">
+            Nenhuma execução registrada ainda.
+          </p>
+        )}
+        {items.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs uppercase text-muted-foreground">
+                  <th className="py-2 pr-3 font-medium">Status</th>
+                  <th className="py-2 pr-3 font-medium">Task</th>
+                  <th className="py-2 pr-3 text-right font-medium">Tool calls</th>
+                  <th className="py-2 pr-3 text-right font-medium">Custo</th>
+                  <th className="py-2 pr-3 font-medium">Início</th>
+                  <th className="py-2 font-medium">Duração</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((run) => (
+                  <RunRow key={run.task_id} run={run} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {total > PAGE_SIZE && (
+          <div className="mt-4 flex items-center justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={offset === 0 || runsQuery.isFetching}
+              onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+            >
+              Anterior
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={offset + PAGE_SIZE >= total || runsQuery.isFetching}
+              onClick={() => setOffset(offset + PAGE_SIZE)}
+            >
+              Próxima
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function RunRow({ run }: { run: AgentRunItem }) {
+  const cost = Number(run.total_cost_usd);
+  const costFmt = isNaN(cost)
+    ? run.total_cost_usd
+    : cost.toLocaleString('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 4,
+      });
+
+  const startedAt = new Date(run.started_at);
+  const endedAt = run.ended_at ? new Date(run.ended_at) : null;
+  const durationMs = endedAt ? endedAt.getTime() - startedAt.getTime() : null;
+
+  return (
+    <tr className="border-b last:border-b-0 hover:bg-muted/40">
+      <td className="py-2 pr-3">
+        <RunStatusBadge status={run.status} />
+      </td>
+      <td className="py-2 pr-3">
+        <code
+          className="font-mono text-xs text-muted-foreground"
+          title={run.task_id}
+        >
+          {run.task_id.slice(0, 8)}…
+        </code>
+      </td>
+      <td className="py-2 pr-3 text-right font-mono text-xs">
+        {run.tool_calls_count}
+      </td>
+      <td className="py-2 pr-3 text-right font-mono text-xs">{costFmt}</td>
+      <td className="py-2 pr-3 text-xs text-muted-foreground">
+        {startedAt.toLocaleString('pt-BR')}
+      </td>
+      <td className="py-2 text-xs text-muted-foreground">
+        {durationMs !== null ? formatDuration(durationMs) : '—'}
+      </td>
+    </tr>
+  );
+}
+
+function RunStatusBadge({ status }: { status: RunStatus }) {
+  const map: Record<RunStatus, { variant: any; label: string }> = {
+    completed: { variant: 'success', label: 'OK' },
+    failed: { variant: 'danger', label: 'Falhou' },
+    in_progress: { variant: 'warning', label: 'Rodando' },
+  };
+  const m = map[status] ?? { variant: 'outline', label: status };
+  return <Badge variant={m.variant}>{m.label}</Badge>;
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const sr = s % 60;
+  return `${m}m${sr.toString().padStart(2, '0')}s`;
 }
 
 function StatusBadge({ status }: { status: AgentInstance['status'] }) {
