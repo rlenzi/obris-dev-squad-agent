@@ -455,6 +455,8 @@ export type RunStatus = 'completed' | 'failed' | 'in_progress';
 
 export interface AgentRunItem {
   task_id: string;
+  jira_issue_key: string | null;
+  title: string | null;
   tool_calls_count: number;
   total_cost_usd: string; // Decimal serializado como string
   started_at: string;

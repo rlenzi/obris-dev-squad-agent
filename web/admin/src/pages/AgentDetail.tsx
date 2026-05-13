@@ -284,13 +284,29 @@ function RunRow({
         </Link>
       </td>
       <td className="py-2 pr-3">
-        <Link to={detailPath} className="block">
-          <code
-            className="font-mono text-xs text-muted-foreground group-hover:text-brand-500 group-hover:underline"
-            title={run.task_id}
-          >
-            {run.task_id.slice(0, 8)}…
-          </code>
+        <Link to={detailPath} className="block group-hover:text-brand-500">
+          {run.jira_issue_key ? (
+            <div>
+              <div className="font-mono text-xs font-medium group-hover:underline">
+                {run.jira_issue_key}
+              </div>
+              {run.title && (
+                <div
+                  className="max-w-[36ch] truncate text-xs text-muted-foreground"
+                  title={run.title}
+                >
+                  {run.title}
+                </div>
+              )}
+            </div>
+          ) : (
+            <code
+              className="font-mono text-xs text-muted-foreground group-hover:text-brand-500 group-hover:underline"
+              title={run.task_id}
+            >
+              {run.task_id.slice(0, 8)}…
+            </code>
+          )}
         </Link>
       </td>
       <td className="py-2 pr-3 text-right font-mono text-xs">

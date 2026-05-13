@@ -101,9 +101,26 @@ async def list_agent_runs(
 
     total: int = (await session.execute(count_stmt)).scalar_one()
 
+    # 5. Busca metadata (jira_issue_key, title) das Tasks da página atual
+    from dev_autonomo.db.models.task import Task as _Task
+
+    task_ids = [row.task_id for row in rows]
+    task_meta: dict = {}
+    if task_ids:
+        meta_rows = (
+            await session.execute(
+                select(_Task.id, _Task.jira_issue_key, _Task.title).where(
+                    _Task.id.in_(task_ids)
+                )
+            )
+        ).all()
+        task_meta = {r.id: (r.jira_issue_key, r.title) for r in meta_rows}
+
     items = [
         AgentRunItem(
             task_id=row.task_id,
+            jira_issue_key=task_meta.get(row.task_id, (None, None))[0],
+            title=task_meta.get(row.task_id, (None, None))[1],
             tool_calls_count=row.tool_calls_count,
             total_cost_usd=row.total_cost_usd,
             started_at=row.started_at,
