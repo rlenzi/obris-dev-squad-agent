@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 
 from qdrant_client.models import PointStruct
 
+from dev_autonomo.common.repos import normalize_repo_id
 from dev_autonomo.knowledge.chunker import CodeChunk, CodeChunker
 from dev_autonomo.knowledge.qdrant_client import (
     KnowledgePartition,
@@ -137,7 +138,7 @@ class CodeIndexer:
                     payload={
                         "client_id": str(client_id),
                         "squad_id": str(squad_id),
-                        "repo": repo_label,
+                        "repo": normalize_repo_id(repo_label),
                         "commit_hash": commit_hash,
                         "file_path": rel_path,
                         "language": chunk.language,
@@ -235,7 +236,7 @@ class CodeIndexer:
                     payload={
                         "client_id": str(client_id),
                         "squad_id": str(squad_id),
-                        "repo": repo_label,
+                        "repo": normalize_repo_id(repo_label),
                         "commit_hash": commit_hash,
                         "file_path": rel_path,
                         "language": chunk.language,
