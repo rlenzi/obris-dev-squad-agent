@@ -96,9 +96,12 @@ async def seed() -> None:
             await session.execute(select(User).where(User.email == USER_EMAIL))
         ).scalar_one_or_none()
         if user is None:
+            # Senha default de dev: 'devauto-admin'. Trocar em prod.
+            from dev_autonomo.control_plane.auth import hash_password
             user = User(
                 email=USER_EMAIL,
                 full_name=USER_NAME,
+                hashed_password=hash_password("devauto-admin"),
                 is_system_admin=True,
                 active=True,
             )

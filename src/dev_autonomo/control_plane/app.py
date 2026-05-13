@@ -1,0 +1,66 @@
+"""FastAPI app principal do Control Plane.
+
+Inclui todos os routers (auth, me, health, webhooks, futuros admin/client).
+"""
+
+from __future__ import annotations
+
+import logging
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from dev_autonomo.config import get_settings
+from dev_autonomo.control_plane import webhooks as webhooks_module
+from dev_autonomo.control_plane.routers import auth as auth_router
+from dev_autonomo.control_plane.routers import health as health_router
+from dev_autonomo.control_plane.routers import me as me_router
+
+logger = logging.getLogger(__name__)
+
+
+def create_app() -> FastAPI:
+    settings = get_settings()
+    app = FastAPI(
+        title="dev-autonomo Control Plane",
+        version="0.2.0",
+        description="API multi-tenant que serve admin e client portals.",
+    )
+
+    # CORS para os dois painéis (admin.* e app.*). Em dev, aceita localhost.
+    allowed_origins = (
+        ["*"]
+        if settings.ENVIRONMENT == "local"
+        else [
+            "https://admin.dev-autonomo.com",
+            "https://app.dev-autonomo.com",
+        ]
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Routers
+    app.include_router(health_router.router)
+    app.include_router(auth_router.router)
+    app.include_router(me_router.router)
+
+    # Webhooks: monta sob /webhooks
+    # webhooks.py expoe `app` FastAPI proprio; pegamos as rotas dele
+    for route in webhooks_module.app.routes:
+        if hasattr(route, "endpoint"):
+            app.add_api_route(
+                route.path,
+                route.endpoint,
+                methods=list(route.methods or set()),
+                name=route.name,
+            )
+
+    return app
+
+
+app = create_app()
