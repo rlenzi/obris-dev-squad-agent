@@ -159,6 +159,131 @@ class GitHubCreatePRTool:
         )
 
 
+_DECISION_TO_EVENT: dict[str, str] = {
+    "approve": "APPROVE",
+    "request_changes": "REQUEST_CHANGES",
+    "comment": "COMMENT",
+}
+
+
+@dataclass
+class GitHubReviewPRTool:
+    name: str = "github_review_pr"
+    description: str = (
+        "Submete uma review num Pull Request do GitHub do cliente. "
+        "Use para aprovar, pedir mudancas ou comentar em um PR existente. "
+        "Passa pelo enforcer.check_repo antes de agir."
+    )
+    input_schema: dict[str, Any] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        self.input_schema = {
+            "type": "object",
+            "properties": {
+                "pr_number": {
+                    "type": "integer",
+                    "description": "Numero do Pull Request a ser revisado.",
+                },
+                "decision": {
+                    "type": "string",
+                    "enum": ["approve", "request_changes", "comment"],
+                    "description": (
+                        "Decisao da review: "
+                        "'approve' (aprova o PR), "
+                        "'request_changes' (pede alteracoes), "
+                        "'comment' (apenas comenta sem aprovar nem bloquear)."
+                    ),
+                },
+                "body": {
+                    "type": "string",
+                    "description": "Comentario geral da review (obrigatorio).",
+                },
+                "inline_comments": {
+                    "type": "array",
+                    "description": (
+                        "Lista opcional de comentarios inline no diff. "
+                        "Cada item deve conter: 'path' (caminho do arquivo), "
+                        "'position' ou 'line' (posicao no diff), e 'body' (texto)."
+                    ),
+                    "items": {"type": "object"},
+                },
+            },
+            "required": ["pr_number", "decision", "body"],
+        }
+
+    async def execute(self, ctx: AgentRunContext, inputs: dict[str, Any]) -> ToolResult:
+        if ctx.workspace_repo is None:
+            return ToolResult.error(
+                "workspace_repo nao configurado no contexto", code="no_workspace"
+            )
+
+        # Enforcer: verifica se a squad pode operar neste repo
+        auth = await ctx.enforcer.check_repo(ctx.workspace_repo)
+        await ctx.enforcer.authorize(self.name, ctx.workspace_repo, auth)
+        if not auth.allowed:
+            return ToolResult.error(
+                auth.suggestion or "repo bloqueado pelo manifest",
+                code=auth.reason,
+            )
+
+        # Mapeia decision -> event da API do GitHub
+        decision = str(inputs.get("decision", "")).lower()
+        event = _DECISION_TO_EVENT.get(decision)
+        if event is None:
+            return ToolResult.error(
+                f"decision invalida: '{decision}'. Use 'approve', 'request_changes' ou 'comment'.",
+                code="bad_input",
+            )
+
+        # Extrai owner/repo da URL do workspace
+        try:
+            owner, repo_name = _extract_owner_repo(ctx.workspace_repo)
+        except ValueError as exc:
+            return ToolResult.error(f"URL invalido: {exc}", code="bad_repo_url")
+
+        # Pega token GitHub do vault
+        try:
+            token = await get_secret(
+                ctx.session,
+                client_id=ctx.client_id,
+                kind=SecretKind.GITHUB_TOKEN,
+            )
+        except CredentialNotFoundError as exc:
+            return ToolResult.error(str(exc), code="credential_missing")
+
+        await ctx.session.commit()  # persiste last_used_at
+
+        client = GitHubClient(token=token)
+        try:
+            data = await client.create_pull_request_review(
+                owner=owner,
+                repo=repo_name,
+                number=int(inputs["pr_number"]),
+                event=event,
+                body=inputs["body"],
+                comments=inputs.get("inline_comments") or None,
+            )
+        except ValueError as exc:
+            return ToolResult.error(str(exc), code="bad_input")
+        except Exception as exc:  # noqa: BLE001
+            return ToolResult.error(
+                f"github API falhou: {exc}", code="github_error"
+            )
+
+        return ToolResult.ok(
+            {
+                "review_id": data.get("id"),
+                "pr_number": inputs["pr_number"],
+                "state": data.get("state"),
+                "decision": decision,
+                "event": event,
+                "html_url": data.get("html_url"),
+                "owner": owner,
+                "repo": repo_name,
+            }
+        )
+
+
 # ---- helpers ----
 
 
