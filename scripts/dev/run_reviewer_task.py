@@ -44,7 +44,7 @@ from dev_autonomo.agent_runtime.toolset.basic import (
     RetrieveKnowledgeTool,
     SignalCompleteTool,
 )
-from dev_autonomo.agent_runtime.toolset.reviewer import (
+from dev_autonomo.agent_runtime.toolset.github import (
     GitHubGetPRTool,
     GitHubReviewPRTool,
 )
@@ -73,8 +73,8 @@ logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 CLIENT_SLUG = "dev-autonomo"
 SQUAD_SLUG = "plataforma"
 AGENT_NAME = "Reviewer Plataforma"
-SKILL_TEMPLATE_SLUG = "reviewer-plataforma-v1"
-REPO_URL = "https://github.com/obris-dev/obris-dev-squad-agent"
+SKILL_TEMPLATE_SLUG = "reviewer-generic-v1"
+REPO_URL = "https://github.com/rlenzi/obris-dev-squad-agent"
 
 # Ferramentas habilitadas para o Reviewer
 REVIEWER_TOOLS = [
@@ -120,7 +120,7 @@ REGRAS:
 
 
 async def _ensure_reviewer_skill_template(session) -> SkillTemplate:
-    """Garante que o SkillTemplate 'reviewer-plataforma-v1' existe (idempotente)."""
+    """Garante que o SkillTemplate 'reviewer-generic-v1' existe (idempotente)."""
     tpl = (
         await session.execute(
             select(SkillTemplate).where(
@@ -142,7 +142,7 @@ async def _ensure_reviewer_skill_template(session) -> SkillTemplate:
                 "Revisa PRs com foco em qualidade, testes, convencoes e seguranca."
             ),
             version=1,
-            tier=AgentTier.DEV,  # tier mais proximo para reviewers
+            tier=AgentTier.REVIEWER,
             model_alias="claude-sonnet-4-6",
             stack_primary={"role": "reviewer"},
             stack_secondary=[],
