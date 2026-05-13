@@ -1,60 +1,79 @@
-"""Schema da mensagem de reindexação incremental publicada na fila RabbitMQ.
+"""Schema da mensagem de reindex que trafega na fila RabbitMQ.
 
-Utilizado pelo webhook GitHub (event push) para enfileirar arquivos que
-precisam ser reindexados no Knowledge Hub da squad.
+Define o contrato tipado entre o webhook de push e o worker de reindex
+incremental do Knowledge Hub.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-# Nome da fila de reindexação incremental (push do GitHub -> worker de indexação)
-REINDEX_QUEUE = "devauto.knowledge.reindex"
+# Nome da fila RabbitMQ usada para disparar jobs de reindex incremental.
+REINDEX_QUEUE = "knowledge.reindex"
 
 
 @dataclass(slots=True)
 class ReindexMessage:
-    """Mensagem enfileirada quando um push no GitHub altera arquivos de uma squad.
+    """Mensagem publicada na fila ``knowledge.reindex`` após um push no GitHub.
 
     Campos
     ------
-    client_id:   UUID do cliente dono da squad.
-    squad_id:    UUID da squad cujo Knowledge Hub deve ser atualizado.
-    repo:        full_name do repositório (ex: ``"owner/repo"``).
-    ref:         ref do push (ex: ``"refs/heads/main"``).
-    commit_hash: SHA do commit mais recente (``after`` no payload do GitHub).
-    files:       Lista deduplicada de caminhos de arquivos afetados
-                 (added + modified + removed).
+    client_id
+        UUID do cliente dono do repositório.
+    squad_id
+        UUID da squad responsável pelo repositório.
+    repo_label
+        Rótulo curto do repositório — ex: ``"backend"``.
+    repo_path
+        Caminho absoluto local do repositório clonado no worker.
+    commit_hash
+        SHA do commit que disparou o evento de push.
+    files
+        Lista de caminhos relativos dos arquivos do diff
+        (added + modified + removed).
     """
 
     client_id: UUID
     squad_id: UUID
-    repo: str
-    ref: str
+    repo_label: str
+    repo_path: str
     commit_hash: str
-    files: list[str] = field(default_factory=list)
+    files: list[str]
+
+    # ------------------------------------------------------------------
+    # Serialização / desserialização
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def from_dict(cls, data: dict) -> ReindexMessage:
+        """Deserializa um payload (dict) em ReindexMessage.
+
+        Levanta ValueError descritivo se o payload estiver malformado.
+        """
+        try:
+            return cls(
+                client_id=UUID(data["client_id"]) if isinstance(data["client_id"], str) else data["client_id"],
+                squad_id=UUID(data["squad_id"]) if isinstance(data["squad_id"], str) else data["squad_id"],
+                repo_label=data["repo_label"],
+                repo_path=data["repo_path"],
+                commit_hash=data["commit_hash"],
+                files=list(data["files"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"ReindexMessage payload invalido: {exc}") from exc
 
     def to_dict(self) -> dict[str, Any]:
-        """Serializa para dict compatível com ``publish()`` do common/queue.py."""
+        """Serializa para ``dict`` pronto para publicação JSON na fila.
+
+        ``UUID`` são convertidos para ``str`` para compatibilidade com JSON.
+        """
         return {
             "client_id": str(self.client_id),
             "squad_id": str(self.squad_id),
-            "repo": self.repo,
-            "ref": self.ref,
+            "repo_label": self.repo_label,
+            "repo_path": self.repo_path,
             "commit_hash": self.commit_hash,
-            "files": self.files,
+            "files": list(self.files),
         }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ReindexMessage":
-        """Desserializa a partir de dict (consumer-side)."""
-        return cls(
-            client_id=UUID(data["client_id"]),
-            squad_id=UUID(data["squad_id"]),
-            repo=data["repo"],
-            ref=data["ref"],
-            commit_hash=data["commit_hash"],
-            files=list(data.get("files", [])),
-        )

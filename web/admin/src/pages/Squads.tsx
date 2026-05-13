@@ -54,7 +54,7 @@ export default function SquadsTab({ clientId }: { clientId: string }) {
               <Plus className="size-4" /> Nova squad
             </Button>
           </DialogTrigger>
-          <CreateSquadDialog clientId={clientId} onSuccess={() => setOpenCreate(false)} />
+          {openCreate && <CreateSquadDialog clientId={clientId} onSuccess={() => setOpenCreate(false)} />}
         </Dialog>
       </CardHeader>
       <CardContent>
