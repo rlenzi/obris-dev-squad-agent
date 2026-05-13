@@ -319,8 +319,8 @@ function ListEditor({
 // ---- Agents ----
 
 function AgentsList({ clientId, squad }: { clientId: string; squad: Squad }) {
+  const navigate = useNavigate();
   const [openCreate, setOpenCreate] = useState(false);
-
   const agentsQuery = useQuery({
     queryKey: ['agents', clientId, squad.id],
     queryFn: () => fetchAgents(clientId, squad.id),
@@ -360,7 +360,7 @@ function AgentsList({ clientId, squad }: { clientId: string; squad: Squad }) {
         ) : (
           <ul className="space-y-2">
             {(agentsQuery.data ?? []).map((agent) => (
-              <AgentRow key={agent.id} agent={agent} />
+              <AgentRow key={agent.id} agent={agent} onClick={() => navigate(`/clients/${clientId}/squads/${squad.id}/agents/${agent.id}`)} />
             ))}
           </ul>
         )}
@@ -369,9 +369,18 @@ function AgentsList({ clientId, squad }: { clientId: string; squad: Squad }) {
   );
 }
 
-function AgentRow({ agent }: { agent: AgentInstance }) {
+function AgentRow({
+  agent,
+  onClick,
+}: {
+  agent: AgentInstance;
+  onClick: () => void;
+}) {
   return (
-    <li className="flex items-center justify-between rounded-md border border-border p-3">
+    <li
+      className="flex items-center justify-between rounded-md border border-border p-3 hover:bg-muted/40 cursor-pointer"
+      onClick={onClick}
+    >
       <div className="flex items-center gap-3">
         <div className="grid size-9 place-items-center rounded-md bg-brand-500/10">
           <Bot className="size-4 text-brand-500" />

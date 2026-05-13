@@ -7,6 +7,7 @@ import DashboardPage from '@/pages/Dashboard';
 import ClientsPage from '@/pages/Clients';
 import ClientDetailPage from '@/pages/ClientDetail';
 import SquadDetailPage from '@/pages/SquadDetail';
+import AgentDetailPage from '@/pages/AgentDetail';
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -40,6 +41,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ClientsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/clients/:clientId/squads/:squadId/agents/:agentId"
+        element={
+          <ProtectedRoute>
+            <AgentDetailPage />
           </ProtectedRoute>
         }
       />

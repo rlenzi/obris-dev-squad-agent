@@ -444,3 +444,8 @@ export async function fetchSkillTemplates() {
   return data;
 }
 
+export async function fetchSkillTemplate(id: string) {
+  const { data } = await api.get<SkillTemplate>(`/skill-templates/${id}`);
+  return data;
+}
+
