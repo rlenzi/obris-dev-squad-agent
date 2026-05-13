@@ -8,41 +8,35 @@ dependencies = [
     # Web framework
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
-
     # Configuration & validation
     "pydantic>=2.9.0",
     "pydantic-settings>=2.5.0",
-
     # Database (async-first; psycopg para Alembic sync)
     "sqlalchemy[asyncio]>=2.0.35",
     "asyncpg>=0.29.0",
     "psycopg2-binary>=2.9.9",
     "alembic>=1.13.0",
-
     # Cache / queue
     "redis>=5.0.0",
     "aio-pika>=9.4.0",
-
     # Vector store
     "qdrant-client>=1.12.0",
-
     # Embeddings
     "voyageai>=0.3.0",
-
     # LLM
     "anthropic>=0.40.0",
-
     # MCP
     "mcp>=0.9.0",
-
     # Crypto / secrets
     "cryptography>=43.0.0",
-
     # Logging
     "structlog>=24.4.0",
-
     # IDs
     "ulid-py>=1.1.0",
+    "tree-sitter>=0.25.2",
+    "tree-sitter-python>=0.25.0",
+    "tree-sitter-typescript>=0.23.2",
+    "gitpython>=3.1.50",
 ]
 
 [dependency-groups]

@@ -54,8 +54,16 @@ class Task(Base, TimestampMixin):
 
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    parent: Mapped["Task | None"] = relationship(
+        "Task",
+        remote_side="Task.id",
+        back_populates="subtasks",
+        foreign_keys=[parent_task_id],
+    )
     subtasks: Mapped[list["Task"]] = relationship(
-        backref="parent", remote_side="Task.parent_task_id"
+        "Task",
+        back_populates="parent",
+        foreign_keys=[parent_task_id],
     )
 
 
