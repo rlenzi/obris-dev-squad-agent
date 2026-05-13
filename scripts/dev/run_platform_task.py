@@ -42,22 +42,52 @@ FLUXO PADRAO (siga rigorosamente):
 2. jira_update_status para "Em andamento" (sinalizando inicio do trabalho).
 3. jira_add_comment com mensagem curta tipo "Iniciei trabalho nesta tarefa.
    Vou investigar o repo e propor mudancas via PR."
-4. Investigue o codigo com retrieve_knowledge + read_file conforme necessario.
-5. Implemente a mudanca usando edit_file / create_file. Cada chamada passa
+4. retrieve_knowledge nas particoes code, conventions e playbook ANTES de
+   propor qualquer mudanca. **Inclua busca por "convencao de nomes" na
+   particao conventions** — voce precisa da versao mais recente em mente.
+5. Investigue o codigo com retrieve_knowledge + read_file conforme necessario.
+6. Implemente a mudanca usando edit_file / create_file. Cada chamada passa
    pelo enforce do manifest.
-6. git_status e git_diff pra revisar antes de commit.
-7. git_commit (mensagem padrao: "tipo: descricao curta", ex: "docs: add contributing").
-8. git_push (a branch ja foi criada pelo runtime).
-9. github_create_pr (draft=true; titulo curto; body com "Closes LEO-N").
-10. jira_add_comment com link do PR (URL completa).
-11. signal_complete com summary + URL do PR.
+7. git_status e git_diff pra revisar antes de commit.
+8. git_commit usando convenção canônica (ver "CONVENCAO DE NOMES" abaixo).
+9. git_push (a branch ja foi criada pelo runtime).
+10. github_create_pr (draft=true; titulo seguindo convenção + sufixo
+    `(LEO-N)`; body com "Closes LEO-N" e 1-3 paragrafos descrevendo
+    o que mudou, por que e como testar).
+11. jira_add_comment com link do PR (URL completa).
+12. signal_complete com summary + URL do PR.
 
 NAO mude status para "Concluído" automaticamente — humano revisa o PR
 primeiro.
 
+CONVENCAO DE NOMES (OBRIGATORIA — ver docs/CONVENTIONS.md):
+
+Formato para commits:
+  <tipo>(<escopo>): <verbo no presente> <o que>
+
+Formato para PR title (mesmo, mas com sufixo da issue):
+  <tipo>(<escopo>): <verbo no presente> <o que> (LEO-N)
+
+Tipos permitidos: feat, fix, chore, docs, refactor, test, perf.
+
+Escopos validos: runner, toolset, admin, client, api, knowledge, migration,
+scripts/dev, prompts/<tier>, db, mcp, enforcement.
+
+Regras:
+- Verbo no PRESENTE ("adicionar", "corrigir", "centralizar").
+- SEM ponto final no title.
+- MAX 72 caracteres no title (sem contar o sufixo da issue).
+- PT-BR no conteudo.
+
+Exemplos validos:
+  feat(admin): adicionar tela de runs paginada (LEO-26)
+  fix(runner): recusar signal_complete com commits unpushed (LEO-52)
+  refactor(scripts/dev): centralizar logica em _runner_lib (LEO-25)
+  test(api): cobertura para list_agent_runs (LEO-30)
+
 REGRAS DE QUALIDADE:
-- Linguagem do CONTEUDO: portugues do Brasil (a tarefa pede PT-BR).
-- Linguagem de COMMIT e PR title: ingles ("docs:", "feat:", "fix:", ...).
+- Linguagem do CONTEUDO (descricao, body, comentarios Jira): PT-BR.
+- Linguagem da CONVENCAO (tipo, escopo): seguir lista canonica acima.
 - Sem especular. Investigue antes de escrever.
 - Use no max 30 turnos.
 """
@@ -72,9 +102,10 @@ SPEC = TaskSpec(
     user_prompt_builder=lambda issue: (
         f"Sua task esta no Jira: {issue}. "
         f"Siga o fluxo padrao do system prompt: get_issue -> update_status "
-        f"'Em andamento' -> add_comment 'iniciei' -> investigar codigo -> "
-        f"implementar -> commit -> push -> create_pr -> add_comment com PR -> "
-        f"signal_complete."
+        f"'Em andamento' -> add_comment 'iniciei' -> retrieve_knowledge "
+        f"(incluindo convencao de nomes) -> investigar codigo -> implementar "
+        f"-> commit -> push -> create_pr (com title no padrao) -> "
+        f"add_comment com PR -> signal_complete."
     ),
     tools=[
         ReadFileTool(),
