@@ -29,6 +29,7 @@ from dev_autonomo.agent_runtime.toolset.jira import (
     JiraGetIssueTool,
     JiraUpdateStatusTool,
 )
+from dev_autonomo.agent_runtime.toolset.repo_checks import RunRepoCheckTool
 
 from scripts.dev._runner_lib import TaskSpec, parse_issue_key, run_task
 
@@ -48,14 +49,21 @@ FLUXO PADRAO (siga rigorosamente):
 5. Investigue o codigo com retrieve_knowledge + read_file conforme necessario.
 6. Implemente a mudanca usando edit_file / create_file. Cada chamada passa
    pelo enforce do manifest.
-7. git_status e git_diff pra revisar antes de commit.
-8. git_commit usando convenção canônica (ver "CONVENCAO DE NOMES" abaixo).
-9. git_push (a branch ja foi criada pelo runtime).
-10. github_create_pr (draft=true; titulo seguindo convenção + sufixo
+7. **VALIDACAO LOCAL (OBRIGATORIO antes do commit):** rode os checks
+   declarados no `.dev-autonomo.yml` do repo via tool `run_repo_check`:
+   - `run_repo_check(check="lint")` — deve passar
+   - `run_repo_check(check="typecheck")` — deve passar (se configurado)
+   - `run_repo_check(check="test")` — testes existentes devem continuar verdes
+   Se algum falhar, ajuste o codigo e re-rode. So commite quando todos
+   estiverem OK (ou skipped por nao estarem configurados).
+8. git_status e git_diff pra revisar antes de commit.
+9. git_commit usando convencao canônica (ver "CONVENCAO DE NOMES" abaixo).
+10. git_push (a branch ja foi criada pelo runtime).
+11. github_create_pr (draft=true; titulo seguindo convencao + sufixo
     `(LEO-N)`; body com "Closes LEO-N" e 1-3 paragrafos descrevendo
     o que mudou, por que e como testar).
-11. jira_add_comment com link do PR (URL completa).
-12. signal_complete com summary + URL do PR.
+12. jira_add_comment com link do PR (URL completa).
+13. signal_complete com summary + URL do PR.
 
 NAO mude status para "Concluído" automaticamente — humano revisa o PR
 primeiro.
@@ -89,6 +97,8 @@ REGRAS DE QUALIDADE:
 - Linguagem do CONTEUDO (descricao, body, comentarios Jira): PT-BR.
 - Linguagem da CONVENCAO (tipo, escopo): seguir lista canonica acima.
 - Sem especular. Investigue antes de escrever.
+- NUNCA pule a etapa 7 (run_repo_check). Code-drafter que so escreve sem
+  rodar perde credibilidade — o Reviewer vai bloquear.
 - Use no max 30 turnos.
 """
 
@@ -104,8 +114,9 @@ SPEC = TaskSpec(
         f"Siga o fluxo padrao do system prompt: get_issue -> update_status "
         f"'Em andamento' -> add_comment 'iniciei' -> retrieve_knowledge "
         f"(incluindo convencao de nomes) -> investigar codigo -> implementar "
-        f"-> commit -> push -> create_pr (com title no padrao) -> "
-        f"add_comment com PR -> signal_complete."
+        f"-> run_repo_check (lint/typecheck/test) -> commit -> push -> "
+        f"create_pr (com title no padrao) -> add_comment com PR -> "
+        f"signal_complete."
     ),
     tools=[
         ReadFileTool(),
@@ -119,6 +130,7 @@ SPEC = TaskSpec(
         JiraGetIssueTool(),
         JiraUpdateStatusTool(),
         JiraAddCommentTool(),
+        RunRepoCheckTool(),
     ],
 )
 
