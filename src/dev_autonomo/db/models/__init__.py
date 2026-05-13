@@ -1,6 +1,7 @@
 """Registra todos os models para Alembic descobrir o metadata."""
 
 from dev_autonomo.db.models.agent import AgentInstance, AgentMessage
+from dev_autonomo.db.models.audit import ToolAuthorizationAttempt
 from dev_autonomo.db.models.core import (
     Client,
     ClientBillingPlan,
@@ -21,6 +22,7 @@ from dev_autonomo.db.models.task import CrossSquadRequest, Task
 __all__ = [
     "AgentInstance",
     "AgentMessage",
+    "ToolAuthorizationAttempt",
     "BillingPeriod",
     "ExternalApiCall",
     "Client",
