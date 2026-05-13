@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AgentRunItem(BaseModel):
@@ -16,19 +16,18 @@ class AgentRunItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     task_id: UUID
-    tool_calls_count: int
+    tool_calls_count: int = Field(ge=0)
     total_cost_usd: Decimal
     started_at: datetime          # MIN(occurred_at) do grupo
-    ended_at: datetime            # MAX(occurred_at) do grupo
+    ended_at: datetime | None = None            # MAX(occurred_at) do grupo
     status: Literal["completed", "failed", "in_progress"]
 
 
 class AgentRunsPage(BaseModel):
     """Resposta paginada do endpoint de agent runs."""
 
-    model_config = ConfigDict(from_attributes=True)
 
     items: list[AgentRunItem]
     total: int        # total de runs distintos (para o frontend calcular páginas)
-    offset: int
-    limit: int
+    offset: int = Field(ge=0)
+    limit: int = Field(ge=1)
