@@ -5,7 +5,7 @@ gerenciarem credenciais via painel, este script vai pro lixo.
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -35,7 +35,7 @@ async def upsert_secret(session, client_id, kind, name, value, encryptor):
         name=name,
         kind=kind,
         encrypted_value=encryptor.encrypt(value),
-        last_rotated_at=datetime.now(tz=timezone.utc),
+        last_rotated_at=datetime.now(tz=UTC),
     )
     session.add(secret)
     print(f"  + {kind.value:15s} '{name}' criada")

@@ -6,7 +6,7 @@ gerenciada via secret manager.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -56,7 +56,7 @@ def create_access_token(
 ) -> str:
     if ttl is None:
         ttl = timedelta(hours=JWT_TTL_HOURS)
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     payload: dict[str, Any] = {
         "sub": str(user_id),
         "email": email,

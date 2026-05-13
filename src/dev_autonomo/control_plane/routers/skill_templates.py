@@ -15,14 +15,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dev_autonomo.common.enums import AgentTier, UserRole
+from dev_autonomo.common.enums import AgentTier
 from dev_autonomo.control_plane.dependencies import (
     get_current_user,
     get_session,
-    require_client_context,
 )
 from dev_autonomo.control_plane.schemas.squad import SkillTemplatePublic
-from dev_autonomo.db.models import Client, SkillTemplate, User
+from dev_autonomo.db.models import SkillTemplate, User
 
 router = APIRouter(prefix="/skill-templates", tags=["skill templates"])
 

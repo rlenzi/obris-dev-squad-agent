@@ -15,7 +15,6 @@ from dev_autonomo.knowledge.indexer import CodeIndexer
 from dev_autonomo.knowledge.qdrant_client import KnowledgePartition, QdrantKnowledgeStore
 from dev_autonomo.knowledge.voyage_client import VoyageEmbeddingClient
 
-
 FIXTURE_PY = '''
 def add(a: int, b: int) -> int:
     """Soma dois numeros inteiros."""

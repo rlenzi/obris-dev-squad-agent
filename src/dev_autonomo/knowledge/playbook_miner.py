@@ -44,7 +44,7 @@ class PRReviewCommentEvent:
     author_login: str | None = None
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PRReviewCommentEvent":
+    def from_dict(cls, data: dict[str, Any]) -> PRReviewCommentEvent:
         return cls(
             client_id=UUID(data["client_id"]),
             squad_id=UUID(data["squad_id"]),

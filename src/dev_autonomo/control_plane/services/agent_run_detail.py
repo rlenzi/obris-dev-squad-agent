@@ -26,7 +26,6 @@ from dev_autonomo.db.models.agent import AgentInstance
 from dev_autonomo.db.models.cost import ExternalApiCall
 from dev_autonomo.db.models.task import Task
 
-
 # Limite duro pra evitar payloads gigantes mesmo se caller pedir mais
 _MAX_LIMIT = 500
 

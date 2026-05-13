@@ -6,7 +6,7 @@ resposta — só metadata (kind, name, timestamps).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -83,7 +83,7 @@ async def create_credential(
         name=body.name,
         kind=body.kind,
         encrypted_value=encryptor.encrypt(body.value),
-        last_rotated_at=datetime.now(tz=timezone.utc),
+        last_rotated_at=datetime.now(tz=UTC),
     )
     session.add(cred)
     await session.commit()
@@ -105,7 +105,7 @@ async def rotate_credential(
 
     encryptor = SecretEncryptor()
     cred.encrypted_value = encryptor.encrypt(body.value)
-    cred.last_rotated_at = datetime.now(tz=timezone.utc)
+    cred.last_rotated_at = datetime.now(tz=UTC)
     await session.commit()
     await session.refresh(cred)
     return cred

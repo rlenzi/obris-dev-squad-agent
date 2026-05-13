@@ -9,7 +9,7 @@ from alembic import context
 # Importa Base com todos os models registrados
 from dev_autonomo.config import get_settings
 from dev_autonomo.db.base import Base
-from dev_autonomo.db.models import *  # noqa: F401, F403 - registra metadata
+from dev_autonomo.db.models import *  # noqa: F403 - registra metadata
 
 config = context.config
 

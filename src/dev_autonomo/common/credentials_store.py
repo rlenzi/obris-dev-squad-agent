@@ -6,7 +6,7 @@ correspondente — util pra auditoria de tokens orfaos.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -50,5 +50,5 @@ async def get_secret(
     encryptor = SecretEncryptor()
     plaintext = encryptor.decrypt(secret.encrypted_value)
     if update_last_used:
-        secret.last_used_at = datetime.now(tz=timezone.utc)
+        secret.last_used_at = datetime.now(tz=UTC)
     return plaintext

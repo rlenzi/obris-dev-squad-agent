@@ -197,7 +197,7 @@ class GitHubCreatePRTool:
                 body=inputs.get("body"),
                 draft=bool(inputs.get("draft", False)),
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return ToolResult.error(
                 f"github API falhou: {exc}", code="github_error"
             )
@@ -272,7 +272,7 @@ class GitHubGetPRTool:
         try:
             pr_data = await client.get_pull_request(owner, repo_name, pr_number)
             files = await client.list_pull_request_files(owner, repo_name, pr_number)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return ToolResult.error(
                 f"github API falhou: {exc}", code="github_error"
             )
@@ -390,7 +390,7 @@ class GitHubReviewPRTool:
             )
         except ValueError as exc:
             return ToolResult.error(str(exc), code="bad_input")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return ToolResult.error(
                 f"github API falhou: {exc}", code="github_error"
             )
@@ -495,7 +495,7 @@ class GitHubMergePRTool:
                 merge_method=merge_method,
                 commit_title=commit_title,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return ToolResult.error(
                 f"github API falhou: {exc}", code="github_error"
             )

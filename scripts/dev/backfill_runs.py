@@ -24,7 +24,6 @@ from dev_autonomo.db.models import AgentInstance, Client, Squad, Task
 from dev_autonomo.db.models.cost import ExternalApiCall
 from dev_autonomo.db.session import session_scope
 
-
 GAP_MINUTES = 5  # se 2 calls do mesmo agente têm > 5min de gap, são runs diferentes
 
 

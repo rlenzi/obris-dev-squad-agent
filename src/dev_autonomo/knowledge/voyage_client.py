@@ -157,7 +157,7 @@ class VoyageEmbeddingClient:
         while attempt < self._max_retries:
             try:
                 return await self._client.embed(batch, model=self._model, input_type=input_type)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 last_exc = exc
                 attempt += 1
                 if attempt >= self._max_retries:

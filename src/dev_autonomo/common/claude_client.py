@@ -84,7 +84,7 @@ class ClaudeClient:
         msg: Message | None = None
         try:
             msg = await self._anthropic.messages.create(**kwargs)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             error = f"{type(exc).__name__}: {exc}"
             raise
         finally:

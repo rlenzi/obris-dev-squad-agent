@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from dev_autonomo.agent_runtime.context import AgentRunContext
-from dev_autonomo.agent_runtime.toolset.base import ToolRegistry, ToolResult
+from dev_autonomo.agent_runtime.toolset.base import ToolRegistry
 
 logger = logging.getLogger(__name__)
 

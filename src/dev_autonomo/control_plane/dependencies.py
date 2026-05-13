@@ -36,18 +36,18 @@ async def get_current_user(
 
     try:
         claims = decode_access_token(token)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="token expirado")
+    except jwt.ExpiredSignatureError as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="token expirado") from exc
     except jwt.InvalidTokenError as exc:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=f"token invalido: {exc}")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail=f"token invalido: {exc}") from exc
 
     user_id_raw = claims.get("sub")
     if not user_id_raw:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="claim 'sub' ausente")
     try:
         user_id = UUID(user_id_raw)
-    except ValueError:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="sub invalido")
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="sub invalido") from exc
 
     user = (
         await session.execute(select(User).where(User.id == user_id))
@@ -120,7 +120,7 @@ def require_roles(*allowed: UserRole):
     async def _inner(
         ctx: tuple[Client, UserRole] = Depends(require_client_context),
     ) -> tuple[Client, UserRole]:
-        client, role = ctx
+        _client, role = ctx
         if role == UserRole.SYSTEM_ADMIN:
             return ctx  # system admin passa em qualquer role check
         if role not in allowed:

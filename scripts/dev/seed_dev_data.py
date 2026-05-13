@@ -129,7 +129,7 @@ async def seed() -> None:
             session.add(membership)
             print(f"+ Membership criado: {user.email} eh CLIENT_ADMIN de {client.slug}")
         else:
-            print(f"= Membership ja existe")
+            print("= Membership ja existe")
 
         # ---- 5. Squad ----
         squad = (
@@ -186,9 +186,9 @@ async def seed() -> None:
             session.add(manifest)
             await session.flush()
             squad.current_manifest_id = manifest.id
-            print(f"+ Manifest v1 criado e linkado a squad")
+            print("+ Manifest v1 criado e linkado a squad")
         else:
-            print(f"= Manifest v1 ja existe")
+            print("= Manifest v1 ja existe")
 
         # ---- 7. Skill templates iniciais (SYSTEM, compartilhados) ----
         skill_specs = [

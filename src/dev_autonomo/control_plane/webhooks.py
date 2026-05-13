@@ -90,8 +90,10 @@ async def github_webhook(
     import json
     try:
         payload: dict[str, Any] = json.loads(body)
-    except json.JSONDecodeError:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="invalid JSON")
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail="invalid JSON"
+        ) from exc
 
     event = (x_github_event or "").lower()
     repo_full_name: str = (payload.get("repository") or {}).get("full_name", "")

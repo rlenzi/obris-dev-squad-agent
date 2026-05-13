@@ -16,13 +16,13 @@ e chamam ``run_task(spec, issue_key)``.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import sys
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,7 +48,6 @@ from dev_autonomo.knowledge.qdrant_client import (
 )
 from dev_autonomo.knowledge.retriever import KnowledgeRetriever
 from dev_autonomo.knowledge.voyage_client import VoyageEmbeddingClient
-
 
 # ---------------------------------------------------------------------------
 # Constantes

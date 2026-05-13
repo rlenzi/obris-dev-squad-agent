@@ -38,7 +38,6 @@ from typing import Any
 from dev_autonomo.agent_runtime.context import AgentRunContext
 from dev_autonomo.agent_runtime.toolset.base import ToolResult
 
-
 REPO_DESCRIPTOR_FILENAME = ".dev-autonomo.yml"
 MAX_OUTPUT_BYTES = 32 * 1024
 DEFAULT_TIMEOUT_SECONDS = 300  # 5 min
@@ -112,7 +111,7 @@ class RunRepoCheckTool:
 
         try:
             descriptor = _load_yaml(descriptor_path)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return ToolResult.error(
                 f"{REPO_DESCRIPTOR_FILENAME} invalido: {exc}",
                 code="bad_descriptor",
@@ -216,7 +215,7 @@ async def _run_shell(
             proc.communicate(), timeout=timeout
         )
         timed_out = False
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
         await proc.communicate()
         return (
