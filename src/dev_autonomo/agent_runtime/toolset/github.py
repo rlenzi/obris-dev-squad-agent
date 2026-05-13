@@ -53,6 +53,32 @@ class GitPushTool:
         if rc != 0:
             return ToolResult.error(f"git rev-parse falhou: {err}", code="git_error")
         branch = branch_out.strip()
+
+        # --- Rebase automático sobre origin/<base_branch> antes do push ---
+        # 1. Atualiza refs remotas
+        rc, _, err = await _run(ctx.workspace_root, ["fetch", "origin"])
+        if rc != 0:
+            return ToolResult.error(f"git fetch origin falhou: {err.strip()}", code="git_error")
+
+        # 2. Descobre a base branch (ctx.base_branch se disponível, senão "main")
+        base_branch: str = getattr(ctx, "base_branch", None) or "main"
+
+        # 3. Executa o rebase
+        rc, _, rebase_err = await _run(ctx.workspace_root, ["rebase", f"origin/{base_branch}"])
+        if rc != 0:
+            # 4. Aborta o rebase para deixar o worktree limpo
+            await _run(ctx.workspace_root, ["rebase", "--abort"])
+            # Extrai arquivos em conflito do stderr (linhas "CONFLICT (...): ...")
+            conflict_lines = [
+                line for line in rebase_err.splitlines() if "CONFLICT" in line
+            ]
+            conflict_detail = "; ".join(conflict_lines) if conflict_lines else rebase_err.strip()
+            return ToolResult.error(
+                f"rebase em origin/{base_branch} falhou com conflito — {conflict_detail}",
+                code="rebase_conflict",
+            )
+        # --- Fim do rebase ---
+
         args = ["push"]
         if inputs.get("set_upstream", True):
             args.append("-u")
