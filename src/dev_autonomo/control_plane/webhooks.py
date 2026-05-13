@@ -6,7 +6,8 @@ o ponto de entrada de eventos que precisam aterrissar em queues do RabbitMQ.
 Roteamento:
 - POST /webhooks/github
     Header X-GitHub-Event determina o tipo:
-      * `push` -> enfileira em QUEUE_GITHUB_PUSH_REINDEX
+      * `push` para refs/heads/main -> extrai diff e publica ReindexMessage
+        em REINDEX_QUEUE (devauto.knowledge.reindex).
       * `pull_request_review_comment` -> enfileira em QUEUE_PLAYBOOK_MINER
     Outros tipos: ignorados (200 OK silencioso para evitar retry do GitHub).
 """
@@ -24,13 +25,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dev_autonomo.common.queue import (
-    QUEUE_GITHUB_PUSH_REINDEX,
     QUEUE_PLAYBOOK_MINER,
     publish,
 )
 from dev_autonomo.common.repos import normalize_repo_id
 from dev_autonomo.db.models import Manifest, Squad
 from dev_autonomo.db.session import get_session
+from dev_autonomo.knowledge.reindex_schema import REINDEX_QUEUE, ReindexMessage
 
 app = FastAPI(title="dev-autonomo webhooks", version="0.1.0")
 logger = logging.getLogger(__name__)
@@ -112,23 +113,49 @@ async def github_webhook(
     client_id, squad_id = squad_resolution
 
     if event == "push":
-        commits_changed = sum(
-            len(c.get("modified", []) or []) + len(c.get("added", []) or [])
-            + len(c.get("removed", []) or [])
-            for c in payload.get("commits", [])
+        ref: str = payload.get("ref", "")
+
+        # Filtra apenas pushes para a branch principal
+        if ref != "refs/heads/main":
+            logger.debug("Push ignorado: ref=%s nao eh refs/heads/main", ref)
+            return {"status": "ignored", "reason": f"ref '{ref}' nao eh refs/heads/main"}
+
+        # Extrai arquivos afetados de todos os commits (added + modified + removed)
+        affected: set[str] = set()
+        for commit in payload.get("commits", []):
+            affected.update(commit.get("added", []) or [])
+            affected.update(commit.get("modified", []) or [])
+            affected.update(commit.get("removed", []) or [])
+
+        files: list[str] = sorted(affected)
+
+        # Push sem arquivos relevantes — retorna sem publicar na fila
+        if not files:
+            logger.info(
+                "Push ignorado: nenhum arquivo afetado em %s ref=%s",
+                repo_full_name,
+                ref,
+            )
+            return {"status": "ignored", "reason": "no_files"}
+
+        msg = ReindexMessage(
+            client_id=client_id,
+            squad_id=squad_id,
+            repo=repo_full_name,
+            ref=ref,
+            commit_hash=payload.get("after", ""),
+            files=files,
         )
-        await publish(
-            QUEUE_GITHUB_PUSH_REINDEX,
-            {
-                "client_id": str(client_id),
-                "squad_id": str(squad_id),
-                "repo": repo_full_name,
-                "ref": payload.get("ref"),
-                "after": payload.get("after"),
-                "commits_files_changed": commits_changed,
-            },
+        await publish(REINDEX_QUEUE, msg.to_dict())
+
+        logger.info(
+            "Push enfileirado para reindex: repo=%s ref=%s files=%d commit=%s",
+            repo_full_name,
+            ref,
+            len(files),
+            msg.commit_hash,
         )
-        return {"status": "queued", "queue": QUEUE_GITHUB_PUSH_REINDEX}
+        return {"status": "queued", "files": len(files)}
 
     if event == "pull_request_review_comment":
         comment = payload.get("comment") or {}
