@@ -303,6 +303,32 @@ async def seed() -> None:
                     "conventions:{squad}",
                 ],
             },
+            {
+                "slug": "reviewer-generic-v1",
+                "name": "Reviewer Generico",
+                "description": (
+                    "Agente de code review automatico. Avalia PRs abertos pelos Devs "
+                    "com foco em qualidade, padroes do time e aderencia ao playbook. "
+                    "Modo 'review only' — sem auto-merge nesta versao."
+                ),
+                "tier": AgentTier.REVIEWER,
+                "model_alias": "claude-sonnet-4-6",
+                "system_prompt_ref": "prompts/reviewer/generic.md",
+                "tools_enabled": [
+                    "retrieve_knowledge",
+                    "github_get_pr",
+                    "github_review_pr",
+                    "jira_get_issue",
+                    "jira_update_status",
+                    "jira_add_comment",
+                    "signal_complete",
+                ],
+                "knowledge_partitions": [
+                    "code:{squad}",
+                    "conventions:{squad}",
+                    "playbook:{squad}",
+                ],
+            },
         ]
 
         for spec in skill_specs:
