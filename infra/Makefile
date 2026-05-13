@@ -4,7 +4,7 @@
 ENV_FILE := ../../secrets/.env
 COMPOSE := docker compose --env-file $(ENV_FILE) -f docker-compose.yml
 
-.PHONY: up down logs ps restart psql redis-cli rabbitmq-ui qdrant-info clean status
+.PHONY: up down logs ps restart psql redis-cli rabbitmq-ui qdrant-info clean status seed
 
 up:
 	@$(COMPOSE) up -d
@@ -41,3 +41,8 @@ qdrant-info:
 clean:
 	@$(COMPOSE) down -v
 	@echo "Containers e volumes destruidos"
+
+seed:
+	@echo "Populando banco com dados de desenvolvimento..."
+	@cd .. && uv run python -m scripts.dev.seed_dev_data
+	@echo "Seed concluido."

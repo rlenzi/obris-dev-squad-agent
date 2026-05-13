@@ -330,7 +330,7 @@ export interface ManifestContent {
   };
 }
 
-export type AgentTier = 'ba' | 'architect' | 'dev' | 'onboarding_analyst';
+export type AgentTier = 'ba' | 'architect' | 'dev' | 'onboarding_analyst' | 'reviewer';
 export type AgentInstanceStatus = 'idle' | 'busy' | 'paused' | 'disabled';
 
 export interface SkillTemplate {

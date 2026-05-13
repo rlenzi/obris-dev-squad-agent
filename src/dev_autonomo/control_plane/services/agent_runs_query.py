@@ -1,19 +1,23 @@
-"""Serviço de consulta de AgentRun para o Control Plane.
+"""Service: query de agregação de runs por agent_instance.
 
-Abstrai o acesso ao banco de dados para listar execuções de agentes,
-garantindo isolamento por client_id e agent_instance_id.
+Agrupa chamadas de external_api_calls por task_id para montar os "runs"
+de um agente, com custo, contagem de tool calls, timestamps e status.
 """
 
 from __future__ import annotations
 
+from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dev_autonomo.control_plane.schemas.agent_runs import AgentRunPublic, AgentRunsPage
-from dev_autonomo.db.models import AgentInstance
-from dev_autonomo.db.models.run import AgentRun
+from dev_autonomo.control_plane.schemas.agent_runs import AgentRunItem, AgentRunsPage
+from dev_autonomo.db.models.agent import AgentInstance
+from dev_autonomo.db.models.cost import ExternalApiCall
+
+# Limite máximo de itens por página
+_MAX_LIMIT = 200
 
 
 async def list_agent_runs(
@@ -24,23 +28,20 @@ async def list_agent_runs(
     offset: int = 0,
     limit: int = 50,
 ) -> AgentRunsPage | None:
-    """Lista as execuções de um agente, paginadas.
+    """Retorna a página de runs de um agente agrupados por task_id.
 
-    Verifica se o AgentInstance existe e pertence ao client_id informado.
-    Retorna ``None`` se o agente não for encontrado ou não pertencer ao client.
-
-    Args:
-        session: Sessão assíncrona do SQLAlchemy.
-        client_id: UUID do client que faz a requisição.
-        agent_instance_id: UUID do agente cujas runs serão listadas.
-        offset: Posição inicial da página (>= 0).
-        limit: Tamanho máximo da página (1–200).
+    Passos:
+    1. Verifica que o agent_instance_id existe e pertence ao client_id;
+       retorna None se não existir (router converte em 404).
+    2. Executa GROUP BY task_id em external_api_calls filtrando pelo agente.
+    3. Ordena por ended_at DESC, aplica OFFSET + LIMIT (máximo _MAX_LIMIT).
+    4. Executa COUNT(DISTINCT task_id) para o campo total da página.
 
     Returns:
-        ``AgentRunsPage`` com os itens e metadados de paginação,
-        ou ``None`` se o agente não existir / não pertencer ao client.
+        AgentRunsPage com items, total, offset e limit, ou None se o agente
+        não pertencer ao client.
     """
-    # Valida que o agente existe e pertence ao client
+    # 1. Verifica existência e ownership do agente
     agent = (
         await session.execute(
             select(AgentInstance).where(
@@ -53,32 +54,67 @@ async def list_agent_runs(
     if agent is None:
         return None
 
-    # Conta o total de runs para o agente
-    total: int = (
-        await session.execute(
-            select(func.count(AgentRun.id)).where(
-                AgentRun.agent_instance_id == agent_instance_id,
-                AgentRun.client_id == client_id,
-            )
-        )
-    ).scalar_one()
+    # 2. Garante que limit não ultrapasse o máximo permitido
+    limit = min(limit, _MAX_LIMIT)
 
-    # Busca a página de runs ordenadas pela mais recente primeiro
-    rows = (
-        await session.execute(
-            select(AgentRun)
-            .where(
-                AgentRun.agent_instance_id == agent_instance_id,
-                AgentRun.client_id == client_id,
-            )
-            .order_by(AgentRun.created_at.desc())
-            .offset(offset)
-            .limit(limit)
+    # Filtro base reutilizado nas duas queries
+    base_where = (
+        # Rows orfas (agente deletado, ondelete=SET NULL) ficam com NULL e
+
+        # sao excluidas naturalmente por igualdade.
+
+        ExternalApiCall.agent_instance_id == agent_instance_id,
+        ExternalApiCall.task_id.is_not(None),
+    )
+
+    # 3. Query de agregação por task_id
+    # status: "failed" se qualquer error IS NOT NULL, senão "completed"
+    status_expr = case(
+        (func.count(ExternalApiCall.error) > 0, "failed"),
+        else_="completed",
+    )
+
+    aggregation_stmt = (
+        select(
+            ExternalApiCall.task_id.label("task_id"),
+            func.count(ExternalApiCall.id).label("tool_calls_count"),
+            func.coalesce(func.sum(ExternalApiCall.cost_usd), Decimal("0")).label(
+                "total_cost_usd"
+            ),
+            func.min(ExternalApiCall.occurred_at).label("started_at"),
+            func.max(ExternalApiCall.occurred_at).label("ended_at"),
+            status_expr.label("status"),
         )
-    ).scalars().all()
+        .where(*base_where)
+        .group_by(ExternalApiCall.task_id)
+        .order_by(func.max(ExternalApiCall.occurred_at).desc())
+        .offset(offset)
+        .limit(limit)
+    )
+
+    rows = (await session.execute(aggregation_stmt)).all()
+
+    # 4. Query de total (COUNT DISTINCT task_id)
+    count_stmt = select(
+        func.count(ExternalApiCall.task_id.distinct())
+    ).where(*base_where)
+
+    total: int = (await session.execute(count_stmt)).scalar_one()
+
+    items = [
+        AgentRunItem(
+            task_id=row.task_id,
+            tool_calls_count=row.tool_calls_count,
+            total_cost_usd=row.total_cost_usd,
+            started_at=row.started_at,
+            ended_at=row.ended_at,
+            status=row.status,
+        )
+        for row in rows
+    ]
 
     return AgentRunsPage(
-        items=[AgentRunPublic.model_validate(r) for r in rows],
+        items=items,
         total=total,
         offset=offset,
         limit=limit,

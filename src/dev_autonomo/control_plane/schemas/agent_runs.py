@@ -1,39 +1,33 @@
-"""Schemas Pydantic para o endpoint GET /clients/{cid}/agents/{aid}/runs."""
+"""Schemas Pydantic de listagem paginada de agent runs."""
 
 from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class AgentRunPublic(BaseModel):
-    """Representação pública de uma execução de agente (AgentRun)."""
+class AgentRunItem(BaseModel):
+    """Representa um run individual do agente (agrupado por task_id)."""
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
-    client_id: UUID
-    agent_instance_id: UUID
-    task_id: UUID | None
-
-    status: str
-    started_at: datetime | None
-    finished_at: datetime | None
-    turn_count: int
+    task_id: UUID
+    tool_calls_count: int = Field(ge=0)
     total_cost_usd: Decimal
-    error: str | None
-
-    created_at: datetime
-    updated_at: datetime
+    started_at: datetime          # MIN(occurred_at) do grupo
+    ended_at: datetime | None = None            # MAX(occurred_at) do grupo
+    status: Literal["completed", "failed", "in_progress"]
 
 
 class AgentRunsPage(BaseModel):
-    """Página paginada de execuções de um agente."""
+    """Resposta paginada do endpoint de agent runs."""
 
-    items: list[AgentRunPublic]
-    total: int
-    offset: int
-    limit: int
+
+    items: list[AgentRunItem]
+    total: int        # total de runs distintos (para o frontend calcular páginas)
+    offset: int = Field(ge=0)
+    limit: int = Field(ge=1)
