@@ -20,6 +20,7 @@ from dev_autonomo.control_plane.routers import client_squads as client_squads_ro
 from dev_autonomo.control_plane.routers import cost as cost_router
 from dev_autonomo.control_plane.routers import skill_templates as skill_templates_router
 from dev_autonomo.control_plane.routers import me as me_router
+from dev_autonomo.control_plane.routers import client_agent_runs as client_agent_runs_router
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(skill_templates_router.router)
     app.include_router(cost_router.admin_router)
     app.include_router(cost_router.client_router)
+    app.include_router(client_agent_runs_router.router)
 
     # Webhooks: monta sob /webhooks
     # webhooks.py expoe `app` FastAPI proprio; pegamos as rotas dele
