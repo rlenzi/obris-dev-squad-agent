@@ -342,11 +342,13 @@ function AgentsList({ clientId, squad }: { clientId: string; squad: Squad }) {
               <Plus className="size-4" /> Novo agente
             </Button>
           </DialogTrigger>
-          <CreateAgentDialog
-            clientId={clientId}
-            squadId={squad.id}
-            onSuccess={() => setOpenCreate(false)}
-          />
+          {openCreate && (
+            <CreateAgentDialog
+              clientId={clientId}
+              squadId={squad.id}
+              onSuccess={() => setOpenCreate(false)}
+            />
+          )}
         </Dialog>
       </CardHeader>
       <CardContent>
