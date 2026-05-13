@@ -485,3 +485,52 @@ export async function fetchAgentRuns(
   return data;
 }
 
+// === Agent Run Detail (drill-down) ===
+
+export interface ExternalCallItem {
+  id: string;
+  occurred_at: string;
+  provider: string; // ANTHROPIC | VOYAGE
+  kind: string; // CHAT | EMBED
+  model: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
+  cost_usd: string;
+  latency_ms: number | null;
+  request_id: string | null;
+  error: string | null;
+}
+
+export interface AgentRunDetail {
+  task_id: string;
+  agent_instance_id: string;
+  title: string | null;
+  jira_issue_key: string | null;
+  status: RunStatus;
+  started_at: string;
+  ended_at: string | null;
+  duration_ms: number | null;
+  tool_calls_count: number;
+  total_cost_usd: string;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cache_creation_tokens: number;
+  total_cache_read_tokens: number;
+  error_count: number;
+  calls: ExternalCallItem[];
+}
+
+export async function fetchAgentRunDetail(
+  clientId: string,
+  agentId: string,
+  taskId: string,
+): Promise<AgentRunDetail> {
+  const { data } = await api.get<AgentRunDetail>(
+    `/clients/${clientId}/agents/${agentId}/runs/${taskId}`,
+    { headers: { 'X-Client-Id': clientId } },
+  );
+  return data;
+}
+
