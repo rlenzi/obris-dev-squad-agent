@@ -206,6 +206,25 @@ class ManifestEnforcer:
             + CROSS_SQUAD_HINT,
         )
 
+
+    async def check_jira_project(self, project_key: str) -> AuthorizationResult:
+        """Squad pode operar (ler/escrever) issues neste projeto Jira?"""
+        manifest = await self._load_manifest()
+        if manifest is None:
+            return self._no_manifest_result()
+        owns = (manifest.content or {}).get("owns", {})
+        projects = owns.get("jira_projects", []) or []
+        if project_key.upper() in [str(p).upper() for p in projects]:
+            return AuthorizationResult(
+                True, "owned", matched_rule=f"owns.jira_projects:{project_key}"
+            )
+        return AuthorizationResult(
+            False,
+            "out_of_scope",
+            suggestion=f"projeto Jira '{project_key}' fora do escopo. "
+            + CROSS_SQUAD_HINT,
+        )
+
     # ---- Logging ----
 
     async def log(
