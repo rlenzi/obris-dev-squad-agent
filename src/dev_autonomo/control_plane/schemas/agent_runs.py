@@ -16,6 +16,8 @@ class AgentRunItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     task_id: UUID
+    jira_issue_key: str | None = None
+    title: str | None = None
     tool_calls_count: int = Field(ge=0)
     total_cost_usd: Decimal
     started_at: datetime          # MIN(occurred_at) do grupo
