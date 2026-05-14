@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -204,9 +205,12 @@ class SignalCompleteTool:
         }
 
     async def execute(self, ctx: AgentRunContext, inputs: dict[str, Any]) -> ToolResult:
-        # LEO-52: agentes Dev as vezes chamam signal_complete sem dar git_push,
-        # deixando o trabalho em commit local sem PR. Antes de aceitar a
-        # conclusao, valida que tudo foi pushado pro remote.
+        # LEO-52: agentes Dev as vezes chamam signal_complete sem dar git_push
+        # ou sem abrir PR, deixando o trabalho em branch local/remota sem PR.
+        # Antes de aceitar a conclusao, valida 2 cenarios:
+        #   (a) commits sem push       -> error "unpushed_work"
+        #   (b) commits pushados mas sem PR_URL nos deliverables -> error "no_pr_url"
+        deliverables = inputs.get("deliverables") or []
         if ctx.workspace_root is not None:
             unpushed_reason = await _check_unpushed_work(ctx.workspace_root)
             if unpushed_reason is not None:
@@ -215,11 +219,26 @@ class SignalCompleteTool:
                     f"Execute git_push e github_create_pr antes de concluir a task.",
                     code="unpushed_work",
                 )
+
+            had_commits = await _had_commits_on_branch(ctx.workspace_root)
+            if had_commits and not _contains_pr_url(deliverables):
+                # Tambem aceita se Task ja foi linkado a um pr_url (caso o
+                # github_create_pr ja persistiu mas o agente esqueceu de citar
+                # nos deliverables).
+                task_pr_url = await _task_pr_url(ctx)
+                if not task_pr_url:
+                    return ToolResult.error(
+                        "signal_complete recusado: voce fez commits e push, "
+                        "mas nao ha PR aberto (deliverables nao tem URL de PR "
+                        "e Task.pr_url tambem esta vazio). Chame github_create_pr "
+                        "antes de concluir.",
+                        code="no_pr_url",
+                    )
         return ToolResult.ok(
             {
                 "completed": True,
                 "summary": inputs.get("summary", ""),
-                "deliverables": inputs.get("deliverables", []),
+                "deliverables": deliverables,
             }
         )
 
@@ -260,6 +279,66 @@ async def _check_unpushed_work(workspace_root: Path) -> str | None:
             return f"{n} commit(s) local(is) ainda nao pushado(s) para o remote"
 
     return None
+
+
+_PR_URL_RE = re.compile(
+    r"https?://(?:www\.)?github\.com/[^/\s]+/[^/\s]+/pull/\d+",
+    re.IGNORECASE,
+)
+
+
+def _contains_pr_url(deliverables: list[Any]) -> bool:
+    """True se algum item dos deliverables contém uma URL de PR do GitHub."""
+    for item in deliverables:
+        if isinstance(item, str) and _PR_URL_RE.search(item):
+            return True
+    return False
+
+
+async def _had_commits_on_branch(workspace_root: Path) -> bool:
+    """True se a branch atual tem commits que não existem na base remota.
+
+    Usa o symbolic-ref upstream pra comparar. Se não há upstream, retorna
+    False (sem upstream a função _check_unpushed_work já bloqueou).
+    """
+    rc, base, _ = await _run_git(
+        workspace_root, ["rev-parse", "--abbrev-ref", "@{u}"]
+    )
+    if rc != 0 or not base.strip():
+        return False
+    # base esta em formato origin/<branch>. Pega o nome da branch base default
+    # do worktree (assume <base>=origin/main quando upstream e a propria branch
+    # pushada). Compara commits unicos da branch.
+    upstream = base.strip()
+    rc, name, _ = await _run_git(workspace_root, ["rev-parse", "--abbrev-ref", "HEAD"])
+    if rc != 0:
+        return False
+    branch = name.strip()
+    if upstream == f"origin/{branch}":
+        # branch foi pushada — verifica se ela diverge de origin/main
+        rc, count_out, _ = await _run_git(
+            workspace_root, ["rev-list", "--count", "origin/main..HEAD"]
+        )
+        if rc == 0:
+            try:
+                return int(count_out.strip()) > 0
+            except ValueError:
+                return False
+    return False
+
+
+async def _task_pr_url(ctx: AgentRunContext) -> str | None:
+    """Lê Task.pr_url do DB (preenchido por github_create_pr)."""
+    if ctx.task_id is None:
+        return None
+    from sqlalchemy import select
+
+    from dev_autonomo.db.models.task import Task
+
+    row = (
+        await ctx.session.execute(select(Task).where(Task.id == ctx.task_id))
+    ).scalar_one_or_none()
+    return row.pr_url if row is not None else None
 
 
 async def _run_git(
