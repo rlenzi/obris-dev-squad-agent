@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Flame } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { login } from '@/lib/api';
+import { formatApiError } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,8 +25,8 @@ export default function LoginPage() {
       const res = await login(email, password);
       await loginWithToken(res.access_token);
       navigate('/dashboard');
-    } catch (err: any) {
-      setError(err?.response?.data?.detail ?? 'Falha no login');
+    } catch (err) {
+      setError(formatApiError(err, 'Falha no login'));
     } finally {
       setLoading(false);
     }

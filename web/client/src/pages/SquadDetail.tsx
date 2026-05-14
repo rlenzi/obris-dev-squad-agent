@@ -17,6 +17,7 @@ import {
   type Squad,
 } from '@/lib/api';
 import { useClientId } from '@/lib/use-client-id';
+import { formatApiError } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -243,7 +244,7 @@ function ManifestEditor({ clientId, squadId }: { clientId: string; squadId: stri
           )}
           {mutation.isError && (
             <p className="text-sm text-destructive">
-              Erro ao salvar: {(mutation.error as any)?.response?.data?.detail ?? 'desconhecido'}
+              Erro ao salvar: {formatApiError(mutation.error, 'desconhecido')}
             </p>
           )}
         </CardContent>
@@ -444,8 +445,7 @@ function CreateAgentDialog({
       queryClient.invalidateQueries({ queryKey: ['agents', clientId, squadId] });
       onSuccess();
     },
-    onError: (err: any) =>
-      setError(err?.response?.data?.detail ?? 'Falha ao criar agente'),
+    onError: (err) => setError(formatApiError(err, 'Falha ao criar agente')),
   });
 
   function handleSubmit(event: FormEvent) {
