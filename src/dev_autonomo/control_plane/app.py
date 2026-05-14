@@ -17,6 +17,7 @@ from dev_autonomo.control_plane.routers import admin_credentials as admin_creden
 from dev_autonomo.control_plane.routers import admin_users as admin_users_router
 from dev_autonomo.control_plane.routers import auth as auth_router
 from dev_autonomo.control_plane.routers import client_agent_runs as client_agent_runs_router
+from dev_autonomo.control_plane.routers import client_credentials as client_credentials_router
 from dev_autonomo.control_plane.routers import client_squads as client_squads_router
 from dev_autonomo.control_plane.routers import client_users as client_users_router
 from dev_autonomo.control_plane.routers import cost as cost_router
@@ -61,6 +62,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_users_router.router)
     app.include_router(client_squads_router.router)
     app.include_router(client_users_router.router)
+    app.include_router(client_credentials_router.router)
     app.include_router(skill_templates_router.router)
     app.include_router(cost_router.admin_router)
     app.include_router(cost_router.client_router)

@@ -226,31 +226,36 @@ export interface CredentialRotate {
   value: string;
 }
 
-export async function fetchCredentials(clientId: string) {
-  const { data } = await api.get<Credential[]>(
-    `/admin/clients/${clientId}/credentials`,
-  );
+// Credentials usam o namespace /client/ (tenant resolvido via JWT).
+// O clientId continua aceito na assinatura por compatibilidade mas e ignorado.
+
+export async function fetchCredentials(_clientId: string) {
+  const { data } = await api.get<Credential[]>('/client/credentials');
   return data;
 }
 
-export async function createCredential(clientId: string, payload: CredentialCreate) {
+export async function createCredential(
+  _clientId: string,
+  payload: CredentialCreate,
+) {
+  const { data } = await api.post<Credential>('/client/credentials', payload);
+  return data;
+}
+
+export async function rotateCredential(
+  _clientId: string,
+  credentialId: string,
+  payload: CredentialRotate,
+) {
   const { data } = await api.post<Credential>(
-    `/admin/clients/${clientId}/credentials`,
+    `/client/credentials/${credentialId}/rotate`,
     payload,
   );
   return data;
 }
 
-export async function rotateCredential(clientId: string, credentialId: string, payload: CredentialRotate) {
-  const { data } = await api.post<Credential>(
-    `/admin/clients/${clientId}/credentials/${credentialId}/rotate`,
-    payload,
-  );
-  return data;
-}
-
-export async function deleteCredential(clientId: string, credentialId: string) {
-  await api.delete(`/admin/clients/${clientId}/credentials/${credentialId}`);
+export async function deleteCredential(_clientId: string, credentialId: string) {
+  await api.delete(`/client/credentials/${credentialId}`);
 }
 
 // ---- Squads / Manifest / Agents / SkillTemplates ----
@@ -578,8 +583,13 @@ export async function fetchCostByClient(
   return data;
 }
 
+/**
+ * Custo do proprio tenant (cliente logado). Backend resolve via JWT.
+ * O clientId fica na assinatura por compat com call sites antigos —
+ * nao e enviado.
+ */
 export async function fetchClientCost(
-  clientId: string,
+  _clientId: string,
   opts: { period_start?: string; period_end?: string } = {},
 ): Promise<CostPeriodResponse> {
   const params = new URLSearchParams();
@@ -587,7 +597,7 @@ export async function fetchClientCost(
   if (opts.period_end) params.set('period_end', opts.period_end);
   const qs = params.toString();
   const { data } = await api.get<CostPeriodResponse>(
-    `/admin/clients/${clientId}/cost${qs ? '?' + qs : ''}`,
+    `/client/cost/summary${qs ? '?' + qs : ''}`,
   );
   return data;
 }
