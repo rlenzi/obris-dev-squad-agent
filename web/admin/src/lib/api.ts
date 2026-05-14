@@ -191,6 +191,51 @@ export async function updateClient(id: string, payload: ClientUpdate) {
   return data;
 }
 
+// ---- Admin: users por cliente ----
+
+export type ClientUserRole =
+  | 'client_admin'
+  | 'client_reviewer'
+  | 'client_viewer';
+
+export interface ClientUserPublic {
+  id: string;
+  email: string;
+  full_name: string;
+  role: ClientUserRole;
+  active: boolean;
+  last_login_at: string | null;
+  membership_id: string;
+  created_at: string;
+}
+
+export interface AdminClientUserCreate {
+  email: string;
+  full_name: string;
+  password: string;
+  role?: ClientUserRole;
+}
+
+export async function createUserForClient(
+  clientId: string,
+  payload: AdminClientUserCreate,
+): Promise<ClientUserPublic> {
+  const { data } = await api.post<ClientUserPublic>(
+    `/admin/clients/${clientId}/users`,
+    payload,
+  );
+  return data;
+}
+
+export async function fetchUsersForClient(
+  clientId: string,
+): Promise<ClientUserPublic[]> {
+  const { data } = await api.get<ClientUserPublic[]>(
+    `/admin/clients/${clientId}/users`,
+  );
+  return data;
+}
+
 // Billing plan
 export async function fetchBillingPlan(clientId: string) {
   const { data } = await api.get<BillingPlan>(`/admin/clients/${clientId}/billing-plan`);
