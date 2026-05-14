@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
+import { useClientId } from '@/lib/use-client-id';
   ArrowLeft,
   Bot,
   Clock,
@@ -33,11 +34,9 @@ import {
 } from '@/components/ui/card';
 
 export default function AgentDetailPage() {
-  const { clientId, squadId, agentId } = useParams<{
-    clientId: string;
-    squadId: string;
-    agentId: string;
-  }>();
+  const clientId = useClientId();
+  const { squadId, agentId } = useParams<{ squadId: string;
+    agentId: string; }>();
   const navigate = useNavigate();
 
   const squadQuery = useQuery({
@@ -71,7 +70,7 @@ export default function AgentDetailPage() {
       <Button
         variant="ghost"
         size="sm"
-        onClick={() => navigate(`/clients/${clientId}/squads/${squadId}`)}
+        onClick={() => navigate(`/squads/${squadId}`)}
       >
         <ArrowLeft className="size-4" />
         Voltar para {squadQuery.data?.name ?? 'squad'}
@@ -274,7 +273,7 @@ function RunRow({
   const endedAt = run.ended_at ? new Date(run.ended_at) : null;
   const durationMs = endedAt ? endedAt.getTime() - startedAt.getTime() : null;
 
-  const detailPath = `/clients/${clientId}/squads/${squadId}/agents/${agentId}/runs/${run.task_id}`;
+  const detailPath = `/squads/${squadId}/agents/${agentId}/runs/${run.task_id}`;
 
   return (
     <tr className="group border-b last:border-b-0 hover:bg-muted/40">
