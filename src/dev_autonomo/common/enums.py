@@ -165,3 +165,18 @@ class AuditDecision(StrEnum):
     REJECTED_REGEX = "rejected_regex"
     REJECTED_MULTI = "rejected_multi"
 
+
+class DreamJobStatus(StrEnum):
+    """Estado de um job de consolidação Dreaming (Bloco H).
+
+    Dreaming é research preview Anthropic. Enquanto o access não chega,
+    todos os jobs nascem como CANDIDATE (registro pra visibilidade) e
+    nunca disparam. Quando DREAMING_ENABLED ficar True, jobs viram
+    RUNNING -> COMPLETED/FAILED.
+    """
+    CANDIDATE = "candidate"                    # registrado, nao disparado (flag off ou batch pendente)
+    RUNNING = "running"                        # API chamada, aguardando
+    COMPLETED = "completed"                    # consolidacao concluida com sucesso
+    FAILED = "failed"                          # erro na chamada/polling
+    SKIPPED_UNAVAILABLE = "skipped_unavailable"  # SDK nao expoe beta.dreams e flag raw_http off
+
