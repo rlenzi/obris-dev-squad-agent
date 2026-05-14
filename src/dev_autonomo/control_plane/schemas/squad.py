@@ -12,6 +12,7 @@ from dev_autonomo.common.enums import (
     AgentInstanceStatus,
     AgentTier,
     SquadStatus,
+    TaskStatus,
 )
 
 
@@ -126,3 +127,11 @@ class AgentInstancePublic(BaseModel):
     last_active_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+
+class AgentLastRunPublic(BaseModel):
+    """Resumo da última run (Task) de um agente da squad."""
+
+    agent_id: UUID
+    last_run_status: TaskStatus | None
+    last_run_at: datetime | None
