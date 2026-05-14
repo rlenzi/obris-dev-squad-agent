@@ -201,26 +201,6 @@ export async function updateBillingPlan(clientId: string, payload: BillingPlanUp
   return data;
 }
 
-// Cost
-export async function fetchCostByClient(periodStart?: string, periodEnd?: string) {
-  const params: Record<string, string> = {};
-  if (periodStart) params.period_start = periodStart;
-  if (periodEnd) params.period_end = periodEnd;
-  const { data } = await api.get<CostByClientItem[]>('/admin/cost/by-client', { params });
-  return data;
-}
-export async function fetchClientCost(
-  clientId: string,
-  periodStart?: string,
-  periodEnd?: string,
-) {
-  const params: Record<string, string> = {};
-  if (periodStart) params.period_start = periodStart;
-  if (periodEnd) params.period_end = periodEnd;
-  const { data } = await api.get<CostPeriod>(`/admin/clients/${clientId}/cost`, { params });
-  return data;
-}
-
 // ---- Credentials ----
 
 export type CredentialKind = 'github_token' | 'gitlab_token' | 'jira_token' | 'generic';
