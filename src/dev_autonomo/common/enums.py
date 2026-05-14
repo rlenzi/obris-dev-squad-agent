@@ -156,3 +156,12 @@ class RagSourceStatus(StrEnum):
     INDEXED = "indexed"          # OK, consultavel
     FAILED = "failed"            # falhou em alguma etapa (ver error_message)
 
+
+class AuditDecision(StrEnum):
+    """Decisão final do pipeline de feedback loop (Bloco F)."""
+    ACCEPTED = "accepted"
+    REJECTED_HAIKU = "rejected_haiku"
+    REJECTED_SONNET = "rejected_sonnet"
+    REJECTED_REGEX = "rejected_regex"
+    REJECTED_MULTI = "rejected_multi"
+

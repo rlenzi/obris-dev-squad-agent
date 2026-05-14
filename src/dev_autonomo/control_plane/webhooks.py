@@ -177,4 +177,69 @@ async def github_webhook(
         )
         return {"status": "queued", "queue": QUEUE_PLAYBOOK_MINER}
 
+    # Bloco F — feedback loop: PR mergeado vira chunks na RAG cross-tenant.
+    if event == "pull_request":
+        action = payload.get("action")
+        pr_data = payload.get("pull_request") or {}
+        if action == "closed" and pr_data.get("merged"):
+            import asyncio as _aio
+            from dev_autonomo.services import feedback_extractor
+
+            pr_url = pr_data.get("html_url")
+            # Stack slug do squad — pega do manifesto atual (V2 vai inferir
+            # do repo). MVP: usar hardcode mapping pra dev-autonomo
+            # ou retornar 200 sem processar se nao soubermos a stack.
+            stack_slug = await _resolve_squad_stack(session, squad_id)
+            if pr_url and stack_slug:
+                # GitHub token do cliente
+                from dev_autonomo.common.enums import SecretKind
+                from dev_autonomo.common.encryption import SecretEncryptor
+                from dev_autonomo.db.models import EncryptedSecret as _ES
+                cred_row = (await session.execute(
+                    select(_ES).where(
+                        _ES.client_id == client_id,
+                        _ES.kind == SecretKind.GITHUB_TOKEN,
+                    )
+                )).scalar_one_or_none()
+                gh_token = SecretEncryptor().decrypt(cred_row.encrypted_value) if cred_row else None
+                if gh_token:
+                    _aio.create_task(_run_feedback_loop_bg(
+                        pr_url=pr_url, stack_slug=stack_slug, github_token=gh_token,
+                    ))
+                    return {"status": "queued", "loop": "feedback_pr_merged", "pr_url": pr_url}
+        return {"status": "ignored", "reason": f"pull_request action={action}"}
+
     return {"status": "ignored", "reason": f"event '{event}' nao suportado"}
+
+
+async def _resolve_squad_stack(session, squad_id) -> str | None:
+    """Resolve stack_slug a partir da squad — V1: hardcoded por slug; V2 via
+    manifest detectado pelo OA."""
+    from dev_autonomo.db.models import Squad as _Squad
+    sq = await session.get(_Squad, squad_id)
+    if sq is None:
+        return None
+    # MVP: usa squad.domain como stack_slug se setado.
+    return sq.domain or None
+
+
+async def _run_feedback_loop_bg(*, pr_url: str, stack_slug: str, github_token: str) -> None:
+    """Wrapper async pra rodar o pipeline em background com session propria."""
+    import logging as _log
+    from dev_autonomo.db.session import session_scope
+    from dev_autonomo.services import feedback_extractor
+    try:
+        async with session_scope() as s:
+            result = await feedback_extractor.process_merged_pr(
+                s, pr_url=pr_url, stack_slug=stack_slug,
+                github_token=github_token,
+            )
+            await s.commit()
+            _log.getLogger(__name__).info(
+                "feedback_loop done pr=%s extracted=%d accepted=%d rejected=%d cost=$%.4f",
+                pr_url, result.extracted_chunks, result.accepted_chunks,
+                result.rejected_haiku + result.rejected_sonnet + result.rejected_regex + result.rejected_multi,
+                result.total_cost_usd,
+            )
+    except Exception:
+        _log.getLogger(__name__).exception("feedback_loop_bg falhou pr=%s", pr_url)
