@@ -637,3 +637,137 @@ export async function fetchAgentRunDetail(
   return data;
 }
 
+
+// =============================================================================
+// Stack Knowledge (Bloco C — RAG sources per stack)
+// =============================================================================
+
+export type RagSourceKind = 'file_upload' | 'url_fetch' | 'pasted_text' | 'feedback_loop' | 'dreaming';
+export type RagSourceScope = 'cross_tenant' | 'client_private';
+export type RagSourceLicense = 'redistributable' | 'partner_only' | 'client_internal' | 'internal_derived' | 'unknown';
+export type RagSourceQuality = 'official' | 'orbis_curated' | 'partner' | 'field_proven' | 'community' | 'internal';
+export type RagSourceStatus = 'pending' | 'extracting' | 'embedding' | 'indexed' | 'failed';
+
+export interface StackCollectionSummary {
+  stack_slug: string;
+  stack_name: string;
+  total_sources: number;
+  total_chunks: number;
+  sources_by_quality: Record<string, number>;
+  clients_using: number;
+}
+
+export interface RagSourcePublic {
+  id: string;
+  collection_slug: string;
+  kind: RagSourceKind;
+  source_uri: string | null;
+  source_hash: string;
+  scope: RagSourceScope;
+  client_id: string | null;
+  license: RagSourceLicense;
+  source_quality: RagSourceQuality;
+  stack_version: string | null;
+  uploaded_by_user_id: string | null;
+  indexed_chunks: number;
+  status: RagSourceStatus;
+  error_message: string | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RagSourceIngestResponse {
+  rag_source_id: string;
+  status: RagSourceStatus;
+  indexed_chunks: number;
+  source_hash: string;
+  error_message: string | null;
+  deduplicated: boolean;
+}
+
+export async function listStackCollections(): Promise<StackCollectionSummary[]> {
+  const { data } = await api.get<StackCollectionSummary[]>('/admin/stack-knowledge');
+  return data;
+}
+
+export async function listStackSources(stackSlug: string): Promise<RagSourcePublic[]> {
+  const { data } = await api.get<RagSourcePublic[]>(`/admin/stack-knowledge/${stackSlug}/sources`);
+  return data;
+}
+
+export async function ingestStackText(
+  stackSlug: string,
+  payload: {
+    text: string;
+    license: RagSourceLicense;
+    source_quality: RagSourceQuality;
+    stack_version?: string;
+    tags?: string;
+    has_redistribution_right: boolean;
+  },
+): Promise<RagSourceIngestResponse> {
+  const form = new FormData();
+  form.append('text', payload.text);
+  form.append('license', payload.license);
+  form.append('source_quality', payload.source_quality);
+  if (payload.stack_version) form.append('stack_version', payload.stack_version);
+  form.append('tags', payload.tags ?? '');
+  form.append('has_redistribution_right', String(payload.has_redistribution_right));
+  const { data } = await api.post<RagSourceIngestResponse>(
+    `/admin/stack-knowledge/${stackSlug}/sources/text`, form,
+  );
+  return data;
+}
+
+export async function ingestStackUrl(
+  stackSlug: string,
+  payload: {
+    url: string;
+    license: RagSourceLicense;
+    source_quality: RagSourceQuality;
+    stack_version?: string;
+    tags?: string;
+    has_redistribution_right: boolean;
+  },
+): Promise<RagSourceIngestResponse> {
+  const form = new FormData();
+  form.append('url', payload.url);
+  form.append('license', payload.license);
+  form.append('source_quality', payload.source_quality);
+  if (payload.stack_version) form.append('stack_version', payload.stack_version);
+  form.append('tags', payload.tags ?? '');
+  form.append('has_redistribution_right', String(payload.has_redistribution_right));
+  const { data } = await api.post<RagSourceIngestResponse>(
+    `/admin/stack-knowledge/${stackSlug}/sources/url`, form,
+  );
+  return data;
+}
+
+export async function ingestStackFile(
+  stackSlug: string,
+  payload: {
+    file: File;
+    license: RagSourceLicense;
+    source_quality: RagSourceQuality;
+    stack_version?: string;
+    tags?: string;
+    has_redistribution_right: boolean;
+  },
+): Promise<RagSourceIngestResponse> {
+  const form = new FormData();
+  form.append('file', payload.file);
+  form.append('license', payload.license);
+  form.append('source_quality', payload.source_quality);
+  if (payload.stack_version) form.append('stack_version', payload.stack_version);
+  form.append('tags', payload.tags ?? '');
+  form.append('has_redistribution_right', String(payload.has_redistribution_right));
+  const { data } = await api.post<RagSourceIngestResponse>(
+    `/admin/stack-knowledge/${stackSlug}/sources/file`, form,
+  );
+  return data;
+}
+
+export async function deleteStackSource(stackSlug: string, sourceId: string): Promise<void> {
+  await api.delete(`/admin/stack-knowledge/${stackSlug}/sources/${sourceId}`);
+}

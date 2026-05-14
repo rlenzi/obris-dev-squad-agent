@@ -628,3 +628,93 @@ export async function fetchAgentRunDetail(
   return data;
 }
 
+
+// =============================================================================
+// Squad Knowledge (Bloco C — RAG sources privadas da squad)
+// =============================================================================
+
+export type RagSourceKindClient =
+  | 'file_upload' | 'pasted_text' | 'feedback_loop' | 'dreaming' | 'url_fetch';
+export type RagSourceQualityClient =
+  | 'official' | 'orbis_curated' | 'partner' | 'field_proven' | 'community' | 'internal';
+export type RagSourceStatusClient =
+  | 'pending' | 'extracting' | 'embedding' | 'indexed' | 'failed';
+
+export interface SquadRagSource {
+  id: string;
+  collection_slug: string;
+  kind: RagSourceKindClient;
+  source_uri: string | null;
+  source_hash: string;
+  source_quality: RagSourceQualityClient;
+  stack_version: string | null;
+  indexed_chunks: number;
+  status: RagSourceStatusClient;
+  error_message: string | null;
+  tags: string[];
+  created_at: string;
+}
+
+export interface SquadRagIngestResponse {
+  rag_source_id: string;
+  status: RagSourceStatusClient;
+  indexed_chunks: number;
+  source_hash: string;
+  error_message: string | null;
+  deduplicated: boolean;
+}
+
+export async function listSquadKnowledgeSources(
+  clientId: string,
+  squadId: string,
+): Promise<SquadRagSource[]> {
+  const { data } = await api.get<SquadRagSource[]>(
+    `/client/squads/${squadId}/knowledge/sources`,
+    { headers: { 'X-Client-Id': clientId } },
+  );
+  return data;
+}
+
+export async function ingestSquadText(
+  clientId: string,
+  squadId: string,
+  payload: { text: string; source_quality: RagSourceQualityClient; stack_version?: string; tags?: string },
+): Promise<SquadRagIngestResponse> {
+  const form = new FormData();
+  form.append('text', payload.text);
+  form.append('source_quality', payload.source_quality);
+  if (payload.stack_version) form.append('stack_version', payload.stack_version);
+  form.append('tags', payload.tags ?? '');
+  const { data } = await api.post<SquadRagIngestResponse>(
+    `/client/squads/${squadId}/knowledge/sources/text`, form,
+    { headers: { 'X-Client-Id': clientId } },
+  );
+  return data;
+}
+
+export async function ingestSquadFile(
+  clientId: string,
+  squadId: string,
+  payload: { file: File; source_quality: RagSourceQualityClient; stack_version?: string; tags?: string },
+): Promise<SquadRagIngestResponse> {
+  const form = new FormData();
+  form.append('file', payload.file);
+  form.append('source_quality', payload.source_quality);
+  if (payload.stack_version) form.append('stack_version', payload.stack_version);
+  form.append('tags', payload.tags ?? '');
+  const { data } = await api.post<SquadRagIngestResponse>(
+    `/client/squads/${squadId}/knowledge/sources/file`, form,
+    { headers: { 'X-Client-Id': clientId } },
+  );
+  return data;
+}
+
+export async function deleteSquadKnowledgeSource(
+  clientId: string,
+  squadId: string,
+  sourceId: string,
+): Promise<void> {
+  await api.delete(`/client/squads/${squadId}/knowledge/sources/${sourceId}`, {
+    headers: { 'X-Client-Id': clientId },
+  });
+}

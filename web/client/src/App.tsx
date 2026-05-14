@@ -7,6 +7,7 @@ import LoginPage from '@/pages/Login';
 import ClientDashboardPage from '@/pages/Dashboard';
 import SquadsListPage from '@/pages/Squads';
 import SquadDetailPage from '@/pages/SquadDetail';
+import SquadKnowledgePage from '@/pages/SquadKnowledge';
 import AgentDetailPage from '@/pages/AgentDetail';
 import AgentRunDetailPage from '@/pages/AgentRunDetail';
 import CredentialsPage from '@/pages/Credentials';
@@ -148,6 +149,16 @@ export default function App() {
           <ProtectedRoute>
             <RequireSetupComplete>
               <SquadDetailPage />
+            </RequireSetupComplete>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/squads/:squadId/knowledge"
+        element={
+          <ProtectedRoute>
+            <RequireSetupComplete>
+              <SquadKnowledgePage />
             </RequireSetupComplete>
           </ProtectedRoute>
         }

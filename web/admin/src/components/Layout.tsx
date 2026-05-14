@@ -5,6 +5,7 @@ import {
   DollarSign,
   Flame,
   LayoutDashboard,
+  Library,
   LogOut,
   Sparkles,
 } from 'lucide-react';
@@ -23,6 +24,7 @@ const NAV: NavItem[] = [
   { to: '/clients', label: 'Clientes', icon: Building2 },
   { to: '/cost', label: 'Custos', icon: DollarSign },
   { to: '/skills', label: 'Skills', icon: Sparkles },
+  { to: '/stack-knowledge', label: 'Stack Knowledge', icon: Library },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {
