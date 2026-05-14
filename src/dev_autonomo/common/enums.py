@@ -106,8 +106,52 @@ class MemoryStoreKind(StrEnum):
 
     Sao colecoes separadas com proposito proprio. Squad pode ter varios.
     """
-    INSIGHTS = "insights"        # consolidacao via Dreaming
-    PLAYBOOK = "playbook"        # convencoes/padroes aprendidos
-    CONVENTIONS = "conventions"  # decisoes explicitas registradas
-    ONBOARDING = "onboarding"    # outputs do OA durante setup
+    INSIGHTS = "insights"            # consolidacao via Dreaming
+    PLAYBOOK = "playbook"            # convencoes/padroes aprendidos
+    CONVENTIONS = "conventions"      # decisoes explicitas registradas
+    ONBOARDING = "onboarding"        # outputs do OA durante setup
+    STACK_PATTERNS = "stack_patterns"  # padroes da stack (cross-tenant ou privado)
+
+
+class RagSourceKind(StrEnum):
+    """Forma de ingest da fonte na RAG."""
+    FILE_UPLOAD = "file_upload"    # PDF/MD/TXT/DOCX subido via painel
+    URL_FETCH = "url_fetch"        # backend faz fetch da URL e extrai texto
+    PASTED_TEXT = "pasted_text"    # texto colado direto no painel
+    FEEDBACK_LOOP = "feedback_loop"  # extracao automatica de PRs mergeados
+    DREAMING = "dreaming"          # output de consolidacao via Dreaming
+
+
+class RagSourceScope(StrEnum):
+    """Quem pode ler chunks dessa fonte."""
+    CROSS_TENANT = "cross_tenant"      # qualquer cliente daquela stack
+    CLIENT_PRIVATE = "client_private"  # apenas a squad daquele client_id
+
+
+class RagSourceLicense(StrEnum):
+    """Direitos sobre o conteudo da fonte."""
+    REDISTRIBUTABLE = "redistributable"  # publico ou licenca clara pra redistribuir
+    PARTNER_ONLY = "partner_only"        # acesso de parceiro, nao redistribuir
+    CLIENT_INTERNAL = "client_internal"  # interno do cliente, jamais cross-tenant
+    INTERNAL_DERIVED = "internal_derived"  # conteudo derivado/anonimizado (feedback loop)
+    UNKNOWN = "unknown"
+
+
+class RagSourceQuality(StrEnum):
+    """Indicador de confiabilidade da fonte (afeta rerank boost)."""
+    OFFICIAL = "official"              # doc oficial do fornecedor
+    ORBIS_CURATED = "orbis_curated"    # experiencia da Orbis (admin Rubens)
+    PARTNER = "partner"                # parceiro/terceiro confiavel
+    FIELD_PROVEN = "field_proven"      # extraido de PR mergeado (feedback loop)
+    COMMUNITY = "community"            # blog/stackoverflow/comunidade
+    INTERNAL = "internal"              # runbook interno do cliente
+
+
+class RagSourceStatus(StrEnum):
+    """Estado do pipeline de ingest da fonte."""
+    PENDING = "pending"          # criada, ainda nao processada
+    EXTRACTING = "extracting"    # extraindo texto (PDF/URL)
+    EMBEDDING = "embedding"      # embeddando chunks via Voyage
+    INDEXED = "indexed"          # OK, consultavel
+    FAILED = "failed"            # falhou em alguma etapa (ver error_message)
 

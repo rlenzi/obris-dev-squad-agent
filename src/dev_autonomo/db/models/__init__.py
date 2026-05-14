@@ -16,8 +16,10 @@ from dev_autonomo.db.models.knowledge import (
 )
 from dev_autonomo.db.models.secret import EncryptedSecret
 from dev_autonomo.db.models.skill import SkillTemplate
+from dev_autonomo.db.models.rag_source import RagSource
 from dev_autonomo.db.models.squad import Manifest, Squad
 from dev_autonomo.db.models.squad_memory_store import SquadMemoryStore
+from dev_autonomo.db.models.stack_profile import StackProfile
 from dev_autonomo.db.models.task import CrossSquadRequest, Task
 
 __all__ = [
@@ -34,9 +36,11 @@ __all__ = [
     "Manifest",
     "OnboardingRun",
     "PlaybookEntry",
+    "RagSource",
     "SkillTemplate",
     "Squad",
     "SquadMemoryStore",
+    "StackProfile",
     "Task",
     "ToolAuthorizationAttempt",
     "User",
