@@ -168,8 +168,12 @@ export default function SetupPage() {
       return Boolean(squad.slug && squad.name);
     }
     if (step === 3) {
-      // Manifesto pode ser vazio pra primeira squad — agente é restrito pelo enforcement
-      return true;
+      // Pelo menos 1 repo é obrigatório — sem repo a análise OA não tem o que escanear.
+      const repos = manifest.repos
+        .split(/\s*[\n,]\s*/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      return repos.length > 0;
     }
     if (step === 4) {
       // Avanca quando OnboardingFlow ja chamou onConfirm.
@@ -500,14 +504,25 @@ function StepManifest({
       </p>
 
       <div className="space-y-1.5">
-        <Label htmlFor="m-repos">Repositórios (um por linha ou vírgula)</Label>
+        <Label htmlFor="m-repos">
+          Repositórios <span className="text-destructive">*</span>{' '}
+          <span className="text-xs text-muted-foreground">(um por linha ou vírgula)</span>
+        </Label>
         <textarea
           id="m-repos"
+          required
+          aria-required="true"
           value={form.repos}
           onChange={(e) => setForm({ ...form, repos: e.target.value })}
           placeholder="https://github.com/acme/web-app&#10;https://github.com/acme/api"
           className="min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground"
         />
+        <p className="text-xs text-muted-foreground">
+          Pelo menos 1 repositório é obrigatório — a análise inicial precisa
+          escanear código pra inferir stack e propor agentes. O sufixo
+          <code className="mx-1 rounded bg-muted px-1">.git</code>
+          é removido automaticamente.
+        </p>
       </div>
 
       <div className="space-y-1.5">
