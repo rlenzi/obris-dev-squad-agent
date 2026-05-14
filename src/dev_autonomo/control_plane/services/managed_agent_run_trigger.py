@@ -198,7 +198,8 @@ async def trigger_managed_agent_run(
     # Resolve repo URL e auth a partir da squad (Manifest tem repos).
     github_repo_url: str | None = None
     github_token: str | None = None
-    if tier in (AgentTier.DEV, AgentTier.REVIEWER, AgentTier.ARCHITECT):
+    if tier in (AgentTier.DEV, AgentTier.REVIEWER, AgentTier.ARCHITECT,
+                AgentTier.ONBOARDING_ANALYST):
         github_repo_url, github_token = await _resolve_github_resource_for_squad(
             session, client, squad
         )
@@ -208,7 +209,22 @@ async def trigger_managed_agent_run(
                 "url": github_repo_url,
                 "authorization_token": github_token,
                 "checkout": {"type": "branch", "name": "main"},
-                "mount_path": "/mnt/repo",
+                "mount_path": "/mnt/repo/" + squad.slug,
+            })
+
+    # OA precisa de memory_store onboarding pra escrever o manifesto.
+    if tier == AgentTier.ONBOARDING_ANALYST:
+        store_id = await _ensure_onboarding_memory_store(session, squad)
+        if store_id:
+            resources.append({
+                "type": "memory_store",
+                "memory_store_id": store_id,
+                "access": "read_write",
+                "instructions": (
+                    "Salve o manifesto detectado em manifest.json neste store. "
+                    "Em corridas futuras do OA, voce pode atualizar mas nao "
+                    "remover o anterior — anexe versionamento."
+                ),
             })
 
     issue_url = (
@@ -264,6 +280,58 @@ async def _run_in_background(
             "managed_run falhou em background task=%s issue=%s",
             task_id, issue_key,
         )
+
+
+async def _ensure_onboarding_memory_store(
+    session: AsyncSession, squad: Squad,
+) -> str | None:
+    """Cria (idempotente) memory_store kind=onboarding pra squad.
+
+    Retorna anthropic_store_id. Usado pra montar como resource quando
+    OA roda — agente escreve manifest.json e insights no store que
+    persiste entre runs.
+    """
+    from dev_autonomo.common.enums import MemoryStoreKind
+    from dev_autonomo.db.models import SquadMemoryStore
+
+    existing = (
+        await session.execute(
+            select(SquadMemoryStore).where(
+                SquadMemoryStore.squad_id == squad.id,
+                SquadMemoryStore.kind == MemoryStoreKind.ONBOARDING,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing.anthropic_store_id
+
+    # Cria na Anthropic
+    import os
+    from anthropic import Anthropic
+    from dotenv import dotenv_values
+    env = dotenv_values("/home/rubens/dev-autonomo-workspace/secrets/.env")
+    os.environ.setdefault("ANTHROPIC_API_KEY", env.get("ANTHROPIC_API_KEY", ""))
+
+    anth = Anthropic()
+    try:
+        store = anth.beta.memory_stores.create(
+            name=f"{squad.slug}-onboarding",
+            description=f"Manifesto e insights de onboarding da squad {squad.slug}",
+            metadata={"squad_slug": squad.slug, "kind": "onboarding"},
+        )
+    except Exception as exc:
+        logger.exception("falha ao criar memory_store onboarding: %s", exc)
+        return None
+
+    rec = SquadMemoryStore(
+        squad_id=squad.id,
+        anthropic_store_id=store.id,
+        kind=MemoryStoreKind.ONBOARDING,
+        description=f"OA write target — {squad.slug}",
+    )
+    session.add(rec)
+    await session.flush()
+    return store.id
 
 
 async def _resolve_github_resource_for_squad(
