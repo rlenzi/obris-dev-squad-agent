@@ -1,11 +1,15 @@
-"""Dispara um agente como subprocess detached.
+"""Dispara um agente como subprocess detached (RUNTIME LEGACY).
 
 V1 minimo: roda `uv run python -m scripts.dev.run_<tier>_task <ISSUE>` em
 background via setsid, log em /tmp/run-<task_id>.log. Sem fila/worker —
 o subprocess sobrevive o request HTTP.
 
-Quando subir o consumer RabbitMQ real (Fase 2.x), trocar este modulo
-para apenas publicar mensagem na fila.
+DEPRECATED: novo caminho eh via managed_agent_run_trigger (Managed Agents
+da Anthropic). Feature flag ``DEV_AUTONOMO_USE_MANAGED`` (default true)
+roteia trigger_agent_run_smart pro novo caminho.
+
+Mantemos este modulo enquanto OA + Reviewer ainda nao foram migrados
+(T10) — esses tiers podem cair no legacy via flag false.
 """
 
 from __future__ import annotations
@@ -154,3 +158,52 @@ async def trigger_agent_run(
         "pid": proc.pid,
         "log_path": str(log_path),
     }
+
+
+# ---------------------------------------------------------------------------
+# Smart dispatcher — escolhe Managed Agents (default) ou legacy via feature flag.
+# ---------------------------------------------------------------------------
+
+
+def _use_managed() -> bool:
+    """Le flag DEV_AUTONOMO_USE_MANAGED. Default true."""
+    raw = os.environ.get("DEV_AUTONOMO_USE_MANAGED", "true").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+async def trigger_agent_run_smart(
+    *,
+    session: AsyncSession,
+    client: Client,
+    agent_id: UUID,
+    jira_issue_key: str,
+) -> dict[str, object]:
+    """Roteador: managed (default) ou legacy via feature flag.
+
+    Tier sem prompt managed.md ainda (OA, Reviewer pre-T10) cai em
+    legacy automaticamente.
+    """
+    if _use_managed():
+        from dev_autonomo.control_plane.services import managed_agent_run_trigger
+        try:
+            return await managed_agent_run_trigger.trigger_managed_agent_run(
+                session=session, client=client,
+                agent_id=agent_id, jira_issue_key=jira_issue_key,
+            )
+        except managed_agent_run_trigger.ManagedTriggerError as exc:
+            # Fallback automatico pra legacy se faltar prompt managed
+            # (ex: OA, Reviewer pre-T10).
+            if "managed.md ausente" in str(exc):
+                logger.warning(
+                    "managed prompt ausente, caindo no legacy: %s", exc,
+                )
+                return await trigger_agent_run(
+                    session=session, client=client,
+                    agent_id=agent_id, jira_issue_key=jira_issue_key,
+                )
+            raise
+
+    return await trigger_agent_run(
+        session=session, client=client,
+        agent_id=agent_id, jira_issue_key=jira_issue_key,
+    )
