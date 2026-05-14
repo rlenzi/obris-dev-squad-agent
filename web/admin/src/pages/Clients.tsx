@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Building2, Plus } from 'lucide-react';
 import { fetchClients, fetchCostByClient } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -12,13 +11,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Dialog, DialogTrigger } from '@/components/ui/dialog';
-import NewClientWizard from '@/components/NewClientWizard';
 import { formatBRL, formatUSD } from '@/lib/utils';
 
 export default function ClientsPage() {
   const navigate = useNavigate();
-  const [openCreate, setOpenCreate] = useState(false);
 
   const clientsQuery = useQuery({ queryKey: ['clients'], queryFn: fetchClients });
   const costQuery = useQuery({
@@ -35,14 +31,11 @@ export default function ClientsPage() {
             Tenants do sistema. Cada um possui squads, agentes e plano próprio.
           </p>
         </div>
-        <Dialog open={openCreate} onOpenChange={setOpenCreate}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="size-4" /> Novo cliente
-            </Button>
-          </DialogTrigger>
-          {openCreate && <NewClientWizard onSuccess={() => setOpenCreate(false)} />}
-        </Dialog>
+        <Button asChild>
+          <Link to="/clients/new">
+            <Plus className="size-4" /> Novo cliente
+          </Link>
+        </Button>
       </div>
 
       <Card>

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Check, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import {
   createClient,
   createUserForClient,
@@ -11,13 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 interface ClientForm {
@@ -88,7 +82,7 @@ function randomPassword(length: number = 16): string {
   return chars.join('');
 }
 
-export default function NewClientWizard({ onSuccess }: { onSuccess: () => void }) {
+export default function NewClientWizard() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -142,7 +136,6 @@ export default function NewClientWizard({ onSuccess }: { onSuccess: () => void }
     onSuccess: (created) => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
       queryClient.invalidateQueries({ queryKey: ['cost-by-client'] });
-      onSuccess();
       navigate(`/clients/${created.id}`);
     },
     onError: (err: unknown) => {
@@ -182,55 +175,72 @@ export default function NewClientWizard({ onSuccess }: { onSuccess: () => void }
   }
 
   return (
-    <DialogContent className="sm:max-w-xl">
-      <DialogHeader>
-        <DialogTitle>Novo cliente</DialogTitle>
-        <DialogDescription>
-          Cria o tenant, define billing e o usuário administrador inicial.
-          O cliente recebe email + senha pra entrar no painel e configurar
+    <div className="mx-auto max-w-2xl space-y-6">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => navigate('/clients')}
+      >
+        <ArrowLeft className="size-4" /> Voltar para clientes
+      </Button>
+
+      <div>
+        <h1 className="text-3xl font-semibold tracking-tight">Novo cliente</h1>
+        <p className="text-muted-foreground">
+          Cria o tenant, define billing e o usuário administrador inicial. O
+          cliente recebe email + senha pra entrar no painel dele e configurar
           squad/credenciais/agentes por conta própria.
-        </DialogDescription>
-      </DialogHeader>
+        </p>
+      </div>
 
       <StepBar current={step} />
 
-      <form onSubmit={handleNext} className="space-y-4">
-        {step === 0 && <StepClient form={client} setForm={setClient} />}
-        {step === 1 && <StepBilling form={billing} setForm={setBilling} />}
-        {step === 2 && <StepUser form={user} setForm={setUser} />}
-        {step === 3 && <StepReview client={client} billing={billing} user={user} />}
-
-        {error && <p className="text-sm text-destructive">{error}</p>}
-
-        <DialogFooter className="flex items-center justify-between gap-2 sm:justify-between">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={step === 0 || fullMutation.isPending}
-            onClick={() => {
-              setError(null);
-              setStep(Math.max(0, step - 1));
-            }}
-          >
-            <ChevronLeft className="size-4" /> Voltar
-          </Button>
-          <Button type="submit" disabled={!canAdvance() || fullMutation.isPending}>
-            {step < STEPS.length - 1 ? (
-              <>
-                Próximo <ChevronRight className="size-4" />
-              </>
-            ) : fullMutation.isPending ? (
-              'Criando…'
-            ) : (
-              <>
-                <Check className="size-4" /> Criar cliente
-              </>
+      <Card>
+        <CardContent className="pt-6">
+          <form onSubmit={handleNext} className="space-y-4">
+            {step === 0 && <StepClient form={client} setForm={setClient} />}
+            {step === 1 && <StepBilling form={billing} setForm={setBilling} />}
+            {step === 2 && <StepUser form={user} setForm={setUser} />}
+            {step === 3 && (
+              <StepReview client={client} billing={billing} user={user} />
             )}
-          </Button>
-        </DialogFooter>
-      </form>
-    </DialogContent>
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
+
+            <div className="flex items-center justify-between border-t pt-4">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={step === 0 || fullMutation.isPending}
+                onClick={() => {
+                  setError(null);
+                  setStep(Math.max(0, step - 1));
+                }}
+              >
+                <ChevronLeft className="size-4" /> Voltar
+              </Button>
+              <Button
+                type="submit"
+                disabled={!canAdvance() || fullMutation.isPending}
+              >
+                {step < STEPS.length - 1 ? (
+                  <>
+                    Próximo <ChevronRight className="size-4" />
+                  </>
+                ) : fullMutation.isPending ? (
+                  'Criando…'
+                ) : (
+                  <>
+                    <Check className="size-4" /> Criar cliente
+                  </>
+                )}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
