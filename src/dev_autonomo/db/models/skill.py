@@ -46,4 +46,8 @@ class SkillTemplate(Base, TimestampMixin):
 
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
+    # Managed Agents (Anthropic beta) — agent_id cacheado pra reutilizacao
+    # entre runs. NULL = agente ainda nao foi criado na Anthropic.
+    anthropic_agent_id: Mapped[str | None] = mapped_column(String(64))
+
     instances: Mapped[list["AgentInstance"]] = relationship(back_populates="skill_template")

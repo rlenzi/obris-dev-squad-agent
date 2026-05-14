@@ -44,6 +44,10 @@ class Client(Base, TimestampMixin):
 
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Managed Agents (Anthropic beta) — environment_id cacheado por client.
+    # NULL = environment ainda nao foi criado na Anthropic.
+    anthropic_environment_id: Mapped[str | None] = mapped_column(String(64))
+
     # Fase 2: provider de cloud escolhido pelo cliente (aws/gcp/azure/ssh).
     # Vazio enquanto cliente não configurou.
     cloud_provider: Mapped[str | None] = mapped_column(String(32))
