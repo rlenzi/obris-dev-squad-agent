@@ -19,8 +19,15 @@ interface ClientForm {
   name: string;
 }
 
+/**
+ * Preset visual do wizard — não é o `plan_kind` do backend (que é
+ * fixed/pay_per_use/hybrid). Aqui é só um atalho UX pra preencher
+ * valores típicos por porte de cliente.
+ */
+type BillingPreset = 'starter' | 'growth' | 'scale';
+
 interface BillingForm {
-  planKind: 'starter' | 'growth' | 'scale';
+  preset: BillingPreset;
   baseFeeBrl: string;
   includedTokens: string;
   includedTasks: string;
@@ -36,7 +43,7 @@ interface UserForm {
   password: string;
 }
 
-const PLAN_DEFAULTS: Record<BillingForm['planKind'], Omit<BillingForm, 'planKind'>> = {
+const PLAN_DEFAULTS: Record<BillingPreset, Omit<BillingForm, 'preset'>> = {
   starter: {
     baseFeeBrl: '0',
     includedTokens: '500000',
@@ -95,7 +102,7 @@ export default function NewClientWizard() {
   });
 
   const [billing, setBilling] = useState<BillingForm>({
-    planKind: 'starter',
+    preset: 'starter',
     ...PLAN_DEFAULTS.starter,
   });
 
@@ -114,7 +121,7 @@ export default function NewClientWizard() {
       const created = await createClient(payload);
 
       await updateBillingPlan(created.id, {
-        plan_kind: billing.planKind,
+        plan_kind: 'hybrid',
         base_fee_monthly_brl: billing.baseFeeBrl,
         included_quota_tokens: Number(billing.includedTokens),
         included_quota_tasks: Number(billing.includedTasks),
@@ -328,29 +335,29 @@ function StepBilling({
   form: BillingForm;
   setForm: (f: BillingForm) => void;
 }) {
-  const choosePlan = (kind: BillingForm['planKind']) => {
-    setForm({ planKind: kind, ...PLAN_DEFAULTS[kind] });
+  const choosePreset = (preset: BillingPreset) => {
+    setForm({ preset, ...PLAN_DEFAULTS[preset] });
   };
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-3 gap-2">
-        {(['starter', 'growth', 'scale'] as const).map((kind) => (
+        {(['starter', 'growth', 'scale'] as const).map((preset) => (
           <button
-            key={kind}
+            key={preset}
             type="button"
-            onClick={() => choosePlan(kind)}
+            onClick={() => choosePreset(preset)}
             className={cn(
               'rounded-md border p-3 text-left text-sm transition-colors',
-              form.planKind === kind
+              form.preset === preset
                 ? 'border-brand-500 bg-brand-500/5'
                 : 'border-border hover:border-brand-500/50',
             )}
           >
-            <div className="font-medium capitalize">{kind}</div>
+            <div className="font-medium capitalize">{preset}</div>
             <div className="text-xs text-muted-foreground">
-              Base R$ {PLAN_DEFAULTS[kind].baseFeeBrl}/mês ·{' '}
-              {Number(PLAN_DEFAULTS[kind].includedTokens).toLocaleString('pt-BR')} tokens
+              Base R$ {PLAN_DEFAULTS[preset].baseFeeBrl}/mês ·{' '}
+              {Number(PLAN_DEFAULTS[preset].includedTokens).toLocaleString('pt-BR')} tokens
             </div>
           </button>
         ))}
@@ -482,7 +489,8 @@ function StepReview({
       </Section>
 
       <Section title="Plano">
-        <ReviewRow label="Tipo" value={billing.planKind} mono />
+        <ReviewRow label="Preset" value={billing.preset} mono />
+        <ReviewRow label="Modelo" value="hybrid (base fee + uso variável)" />
         <ReviewRow label="Base mensal (BRL)" value={billing.baseFeeBrl} />
         <ReviewRow label="Quota tokens" value={billing.includedTokens} />
         <ReviewRow label="Quota tasks" value={billing.includedTasks} />
