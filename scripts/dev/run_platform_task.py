@@ -29,6 +29,7 @@ from dev_autonomo.agent_runtime.toolset.jira import (
     JiraGetIssueTool,
     JiraUpdateStatusTool,
 )
+from dev_autonomo.agent_runtime.toolset.pre_flight import PreFlightCheckTool
 from dev_autonomo.agent_runtime.toolset.repo_checks import RunRepoCheckTool
 from scripts.dev._runner_lib import TaskSpec, parse_issue_key, run_task
 
@@ -47,6 +48,15 @@ FLUXO PADRAO (siga rigorosamente):
 5. Investigue o codigo com retrieve_knowledge + read_file conforme necessario.
 6. Implemente a mudanca usando edit_file / create_file. Cada chamada passa
    pelo enforce do manifest.
+6.5 **PRE-FLIGHT CHECK (OBRIGATORIO antes do commit):** se a description da
+   issue tem uma secao "## Pre-flight Skeleton" com lista de arquivos
+   declarada pelo Architect, rode `pre_flight_check` passando a description
+   da issue. A tool retorna missing_from_changes (declarados mas voce nao
+   mexeu) e extra_in_changes (voce mexeu mas nao estava declarado).
+   - Se `missing`: ou crie/edite, ou comente no Jira justificando o
+     desvio antes de prosseguir.
+   - Se `extra`: garanta que esta mudanca extra esta no PR body. Drift
+     consciente e OK, drift acidental e bug.
 7. **VALIDACAO LOCAL (OBRIGATORIO antes do commit):** rode os checks
    declarados no `.dev-autonomo.yml` do repo via tool `run_repo_check`:
    - `run_repo_check(check="lint")` — deve passar
@@ -129,6 +139,7 @@ SPEC = TaskSpec(
         JiraUpdateStatusTool(),
         JiraAddCommentTool(),
         RunRepoCheckTool(),
+        PreFlightCheckTool(),
     ],
 )
 
