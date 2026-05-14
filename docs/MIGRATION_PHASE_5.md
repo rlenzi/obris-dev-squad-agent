@@ -33,3 +33,5 @@ para Managed Agents, com foco na ativação do mecanismo de Outcomes.
 
 Consulte também: [MANAGED_AGENTS.md](MANAGED_AGENTS.md) e
 [CONVENTIONS.md](../docs/CONVENTIONS.md).
+
+> Validado em 2026-05-14: tokens via resources (sem inline).
