@@ -85,10 +85,7 @@ export default function App() {
         path="/cost"
         element={
           <ProtectedRoute>
-            <ComingSoonPage
-              title="Custos"
-              description="Consumo do mês corrente + faturável. Em construção."
-            />
+            <CostPage />
           </ProtectedRoute>
         }
       />
