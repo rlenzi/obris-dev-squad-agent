@@ -85,6 +85,7 @@ class ApiCallKind(StrEnum):
     TOOL = "tool"
     WEBHOOK = "webhook"
     OTHER = "other"
+    SKILL_PROPOSAL = "skill_proposal"  # propose_skill_from_stack (Bloco D)
 
 
 class OutcomeStatus(StrEnum):
