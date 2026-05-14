@@ -9,6 +9,7 @@ from dev_autonomo.db.models.core import (
     User,
 )
 from dev_autonomo.db.models.cost import BillingPeriod, ExternalApiCall
+from dev_autonomo.db.models.dream_job import DreamJob
 from dev_autonomo.db.models.knowledge import (
     KnowledgeIndexingJob,
     OnboardingRun,
@@ -31,6 +32,7 @@ __all__ = [
     "ClientBillingPlan",
     "ClientMembership",
     "CrossSquadRequest",
+    "DreamJob",
     "EncryptedSecret",
     "ExternalApiCall",
     "KnowledgeIndexingJob",

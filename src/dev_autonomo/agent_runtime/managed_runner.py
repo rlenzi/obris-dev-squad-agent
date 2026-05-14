@@ -37,11 +37,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dev_autonomo.common.claude_pricing import get_pricing
-from dev_autonomo.common.enums import ApiCallKind, ApiProvider, OutcomeStatus
+from dev_autonomo.common.enums import (
+    ApiCallKind,
+    ApiProvider,
+    DreamJobStatus,
+    OutcomeStatus,
+)
 from dev_autonomo.config import get_settings
 from dev_autonomo.db.models import (
     AgentInstance,
     Client,
+    DreamJob,
     SkillTemplate,
     Squad,
     Task,
@@ -654,43 +660,31 @@ async def run_managed_task(
     except Exception:
         pass
 
-    # 8. (FUTURO) Hook de Dreaming pós-task — consolida insights desta
-    # session no memory_store da squad.
-    #
-    # Pré-requisitos pra ativar:
-    #   - Access ao research preview Dreaming (request form Anthropic).
-    #   - Memory_store ativo no spec (ex: spec.memory_store_id).
-    #   - Decisão de cadência (toda task? lote diário? threshold N
-    #     tasks?). Recomendado: lote diário pra economizar.
-    #   - Tabela DB ``dream_jobs`` registrando id, status, sessions,
-    #     output_memory_store_id (alembic migration pendente).
-    #
-    # Quando ativar, descomentar e mover pra um worker async/cron, não
-    # bloqueante no run_managed_task:
-    #
-    # from dev_autonomo.knowledge import dreaming
-    # if spec.memory_store_id and not error:
-    #     dream_result = dreaming.consolidate(
-    #         memory_store_id=spec.memory_store_id,
-    #         session_ids=[anth_session.id],  # ou lote acumulado
-    #         instructions="Foco em padroes reutilizaveis pra proximos runs.",
-    #         model="claude-sonnet-4-6",
-    #     )
-    #     # Gravar dream_result em dream_jobs, promover output_memory_store_id
-    #     # se status == "completed".
+    completed = error is None and status_final == "idle"
+
+    # 8. Hook de Dreaming pós-task (Bloco H).
+    # Sempre registra DreamJob (CANDIDATE se flag off, RUNNING se on).
+    # Quando o research preview Anthropic for liberado, basta setar
+    # DREAMING_ENABLED=true no env — sem deploy de código.
+    await _post_task_dream_hook(
+        spec=spec,
+        task_id=task.id,
+        client_id=local_client.id,
+        squad_id=squad.id,
+        anth_session_id=anth_session.id,
+        completed_ok=completed,
+    )
 
     print("\n" + "=" * 70)
     print("RESULTADO")
     print("=" * 70)
-    print(f"completed:    {error is None and status_final == 'idle'}")
+    print(f"completed:    {completed}")
     print(f"status:       {status_final}")
     print(f"latencia:     {latency:.1f}s")
     print(f"tool calls:   {len(tool_uses)}")
     print(f"custo:        US$ {cost:.4f}")
     if error:
         print(f"ERRO:         {error}")
-
-    completed = error is None and status_final == "idle"
 
     input_tokens = getattr(usage, "input_tokens", 0) if usage else 0
     output_tokens = getattr(usage, "output_tokens", 0) if usage else 0
@@ -716,4 +710,151 @@ async def run_managed_task(
         outcome_verdict=outcome_verdict,
         outcome_iterations=outcome_iterations,
         error=error,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Dreaming hook pós-task (Bloco H)
+# ---------------------------------------------------------------------------
+
+
+_DEFAULT_DREAM_INSTRUCTIONS = (
+    "Foco em padrões reutilizáveis pra próximos runs desta squad: "
+    "convenções de código, decisões arquiteturais, armadilhas evitadas. "
+    "Ignorar contexto efêmero (ids, paths temporários, timestamps)."
+)
+
+
+async def _post_task_dream_hook(
+    *,
+    spec: ManagedTaskSpec,
+    task_id: UUID,
+    client_id: UUID,
+    squad_id: UUID,
+    anth_session_id: str,
+    completed_ok: bool,
+) -> None:
+    """Registra DreamJob pós-task. Bloco H do roadmap stack-knowledge.
+
+    Sempre cria a linha em ``dream_jobs`` pra visibilidade do que seria
+    consolidado (status CANDIDATE quando flag off ou access faltando).
+    Quando ``DREAMING_ENABLED=True``, dispara consolidação em background
+    via ``asyncio.create_task`` — não bloqueia o retorno da task.
+
+    Sem memory_store no spec.resources, hook é no-op.
+    Task que falhou, hook é no-op (não vale consolidar lixo).
+    """
+    if not completed_ok:
+        return
+
+    memory_store_id: str | None = None
+    for resource in spec.resources:
+        if resource.get("type") == "memory_store":
+            memory_store_id = resource.get("memory_store_id")
+            break
+
+    if not memory_store_id:
+        return
+
+    settings = get_settings()
+    model = settings.DREAMING_MODEL
+    instructions = _DEFAULT_DREAM_INSTRUCTIONS
+
+    async with session_scope() as session:
+        dream_job = DreamJob(
+            client_id=client_id,
+            squad_id=squad_id,
+            task_id=task_id,
+            memory_store_id=memory_store_id,
+            session_ids=[anth_session_id],
+            model=model,
+            instructions=instructions,
+            status=DreamJobStatus.CANDIDATE,
+        )
+        session.add(dream_job)
+        await session.flush()
+        dream_job_id = dream_job.id
+        await session.commit()
+
+    logger.info(
+        "dream_job criado id=%s status=candidate memory_store=%s session=%s",
+        dream_job_id, memory_store_id, anth_session_id,
+    )
+
+    if not settings.DREAMING_ENABLED:
+        return
+
+    import asyncio
+    asyncio.create_task(
+        _execute_dream_job(dream_job_id, settings.DREAMING_ALLOW_RAW_HTTP)
+    )
+
+
+async def _execute_dream_job(dream_job_id: UUID, allow_raw_http: bool) -> None:
+    """Executa consolidação Dreaming em background.
+
+    ``dreaming.consolidate`` é síncrono (polling). Roda em thread separada
+    via ``asyncio.to_thread`` pra não bloquear o event loop. Resultado vira
+    update em ``dream_jobs``.
+    """
+    import asyncio
+
+    from dev_autonomo.knowledge import dreaming
+
+    async with session_scope() as session:
+        dj = await session.get(DreamJob, dream_job_id)
+        if dj is None:
+            logger.warning("dream_job %s nao encontrado", dream_job_id)
+            return
+        memory_store_id = dj.memory_store_id
+        session_ids = list(dj.session_ids)
+        model = dj.model
+        instructions = dj.instructions
+        dj.status = DreamJobStatus.RUNNING
+        await session.commit()
+
+    try:
+        result = await asyncio.to_thread(
+            dreaming.consolidate,
+            memory_store_id=memory_store_id,
+            session_ids=session_ids,
+            instructions=instructions,
+            model=model,
+            allow_raw_http=allow_raw_http,
+        )
+    except Exception as exc:
+        logger.exception("dream_job %s falhou em consolidate", dream_job_id)
+        async with session_scope() as session:
+            dj = await session.get(DreamJob, dream_job_id)
+            if dj is not None:
+                dj.status = DreamJobStatus.FAILED
+                dj.error = f"{type(exc).__name__}: {exc}"
+                await session.commit()
+        return
+
+    status_map = {
+        "completed": DreamJobStatus.COMPLETED,
+        "failed": DreamJobStatus.FAILED,
+        "skipped_unavailable": DreamJobStatus.SKIPPED_UNAVAILABLE,
+        "running": DreamJobStatus.RUNNING,
+    }
+    final_status = status_map.get(result.status, DreamJobStatus.FAILED)
+
+    async with session_scope() as session:
+        dj = await session.get(DreamJob, dream_job_id)
+        if dj is None:
+            return
+        dj.status = final_status
+        dj.dream_id = result.dream_id
+        dj.output_memory_store_id = result.output_memory_store_id
+        dj.input_tokens = result.input_tokens
+        dj.output_tokens = result.output_tokens
+        dj.cost_usd = result.cost_usd
+        dj.error = result.error
+        await session.commit()
+
+    logger.info(
+        "dream_job %s finalizado status=%s output_store=%s cost=$%s",
+        dream_job_id, final_status.value,
+        result.output_memory_store_id, result.cost_usd,
     )

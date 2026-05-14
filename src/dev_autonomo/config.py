@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: SecretStr
     VOYAGE_API_KEY: SecretStr
 
+    # Dreaming (research preview Anthropic — Bloco H).
+    # False = jobs registrados como CANDIDATE pra visibilidade, sem chamada API.
+    # True = tenta consolidar via SDK; se SDK não expoe beta.dreams, marca como
+    # SKIPPED_UNAVAILABLE (a menos que DREAMING_ALLOW_RAW_HTTP=True).
+    DREAMING_ENABLED: bool = False
+    DREAMING_ALLOW_RAW_HTTP: bool = False
+    DREAMING_MODEL: str = "claude-sonnet-4-6"
+
     # Master key Fernet pra encryptar segredos no banco
     MASTER_ENCRYPTION_KEY: SecretStr | None = None
 
