@@ -76,7 +76,7 @@ export default function SquadsListPage() {
                         </div>
                       </div>
                       <Badge
-                        variant={squad.status === 'ACTIVE' ? 'success' : 'outline'}
+                        variant={squad.status === 'active' ? 'success' : 'outline'}
                       >
                         {squad.status}
                       </Badge>

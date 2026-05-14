@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-import { useClientId } from '@/lib/use-client-id';
   Activity,
   AlertTriangle,
   ArrowLeft,
@@ -19,6 +18,7 @@ import {
   type ExternalCallItem,
   type RunStatus,
 } from '@/lib/api';
+import { useClientId } from '@/lib/use-client-id';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {

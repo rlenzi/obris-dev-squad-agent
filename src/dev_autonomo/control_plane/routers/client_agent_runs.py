@@ -18,9 +18,15 @@ from dev_autonomo.control_plane.dependencies import (
 from dev_autonomo.control_plane.schemas.agent_runs import (
     AgentRunDetail,
     AgentRunsPage,
+    AgentRunTriggerRequest,
+    AgentRunTriggerResponse,
 )
 from dev_autonomo.control_plane.services.agent_run_detail import (
     get_agent_run_detail,
+)
+from dev_autonomo.control_plane.services.agent_run_trigger import (
+    TriggerError,
+    trigger_agent_run,
 )
 from dev_autonomo.control_plane.services.agent_runs_query import list_agent_runs
 from dev_autonomo.db.models import Client
@@ -117,3 +123,47 @@ async def get_agent_run_endpoint(
         )
 
     return result
+
+
+@router.post(
+    "/clients/{cid}/agents/{aid}/runs",
+    response_model=AgentRunTriggerResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Dispara uma nova execução do agente",
+    description=(
+        "Cria Task local (idempotente por jira_issue_key) e dispara um "
+        "subprocess detached que roda o runner correspondente ao tier do "
+        "agente (BA/Architect/Dev/Reviewer). O processo sobrevive ao request "
+        "HTTP. Acompanhe via GET /clients/{cid}/agents/{aid}/runs."
+    ),
+)
+async def trigger_agent_run_endpoint(
+    cid: UUID,
+    aid: UUID,
+    payload: AgentRunTriggerRequest,
+    ctx: tuple[Client, UserRole] = Depends(require_client_context),
+    session: AsyncSession = Depends(get_session),
+) -> AgentRunTriggerResponse:
+    """Dispara um run do agente `aid` no client `cid`."""
+    client, _ = ctx
+
+    if client.id != cid:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="client autenticado nao corresponde ao cid informado na URL",
+        )
+
+    try:
+        result = await trigger_agent_run(
+            session=session,
+            client=client,
+            agent_id=aid,
+            jira_issue_key=payload.jira_issue_key.strip().upper(),
+        )
+    except TriggerError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        ) from err
+
+    return AgentRunTriggerResponse(**result)

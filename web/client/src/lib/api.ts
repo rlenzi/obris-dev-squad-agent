@@ -201,26 +201,6 @@ export async function updateBillingPlan(clientId: string, payload: BillingPlanUp
   return data;
 }
 
-// Cost
-export async function fetchCostByClient(periodStart?: string, periodEnd?: string) {
-  const params: Record<string, string> = {};
-  if (periodStart) params.period_start = periodStart;
-  if (periodEnd) params.period_end = periodEnd;
-  const { data } = await api.get<CostByClientItem[]>('/admin/cost/by-client', { params });
-  return data;
-}
-export async function fetchClientCost(
-  clientId: string,
-  periodStart?: string,
-  periodEnd?: string,
-) {
-  const params: Record<string, string> = {};
-  if (periodStart) params.period_start = periodStart;
-  if (periodEnd) params.period_end = periodEnd;
-  const { data } = await api.get<CostPeriod>(`/admin/clients/${clientId}/cost`, { params });
-  return data;
-}
-
 // ---- Credentials ----
 
 export type CredentialKind = 'github_token' | 'gitlab_token' | 'jira_token' | 'generic';
@@ -484,6 +464,33 @@ export async function fetchAgentRuns(
   const { data } = await api.get<AgentRunsPage>(url, {
     headers: { 'X-Client-Id': clientId },
   });
+  return data;
+}
+
+export interface AgentRunTriggerRequest {
+  jira_issue_key: string;
+}
+
+export interface AgentRunTriggerResponse {
+  task_id: string;
+  jira_issue_key: string;
+  agent_id: string;
+  tier: string;
+  pid: number;
+  log_path: string;
+  status: 'started';
+}
+
+export async function triggerAgentRun(
+  clientId: string,
+  agentId: string,
+  payload: AgentRunTriggerRequest,
+): Promise<AgentRunTriggerResponse> {
+  const { data } = await api.post<AgentRunTriggerResponse>(
+    `/clients/${clientId}/agents/${agentId}/runs`,
+    payload,
+    { headers: { 'X-Client-Id': clientId } },
+  );
   return data;
 }
 
