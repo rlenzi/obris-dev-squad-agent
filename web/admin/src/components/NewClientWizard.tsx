@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
+import { cn, formatApiError } from '@/lib/utils';
 
 interface ClientForm {
   slug: string;
@@ -139,9 +139,7 @@ export default function NewClientWizard() {
       navigate(`/clients/${created.id}`);
     },
     onError: (err: unknown) => {
-      const detail =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? 'Falha ao criar cliente');
+      setError(formatApiError(err, 'Falha ao criar cliente'));
     },
   });
 

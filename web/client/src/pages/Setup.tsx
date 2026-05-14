@@ -36,7 +36,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
+import { cn, formatApiError } from '@/lib/utils';
 
 interface CredsForm {
   github_token: string;
@@ -151,10 +151,7 @@ export default function SetupPage() {
       navigate('/dashboard');
     },
     onError: (err: unknown) => {
-      const detail =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail;
-      setError(detail ?? 'Falha na configuração inicial');
+      setError(formatApiError(err, 'Falha na configuração inicial'));
     },
   });
 
