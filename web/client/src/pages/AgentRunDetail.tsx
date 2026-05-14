@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
+import { useClientId } from '@/lib/use-client-id';
   Activity,
   AlertTriangle,
   ArrowLeft,
@@ -31,12 +32,10 @@ import {
 const CALLS_PAGE_SIZE = 100;
 
 export default function AgentRunDetailPage() {
-  const { clientId, squadId, agentId, taskId } = useParams<{
-    clientId: string;
-    squadId: string;
+  const clientId = useClientId();
+  const { squadId, agentId, taskId } = useParams<{ squadId: string;
     agentId: string;
-    taskId: string;
-  }>();
+    taskId: string; }>();
   const navigate = useNavigate();
   const [callsOffset, setCallsOffset] = useState(0);
 
@@ -85,7 +84,7 @@ export default function AgentRunDetailPage() {
         size="sm"
         onClick={() =>
           navigate(
-            `/clients/${clientId}/squads/${squadId}/agents/${agentId}`,
+            `/squads/${squadId}/agents/${agentId}`,
           )
         }
       >

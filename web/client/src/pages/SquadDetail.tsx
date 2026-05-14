@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Bot, GitBranch, Plus, Trash2 } from 'lucide-react';
 import {
+import { useClientId } from '@/lib/use-client-id';
   createAgent,
   fetchAgents,
   fetchClient,
@@ -39,7 +40,8 @@ import {
 } from '@/components/ui/dialog';
 
 export default function SquadDetailPage() {
-  const { clientId, squadId } = useParams<{ clientId: string; squadId: string }>();
+  const clientId = useClientId();
+  const { squadId } = useParams<{ squadId: string }>();
   const navigate = useNavigate();
 
   const clientQuery = useQuery({
@@ -61,7 +63,7 @@ export default function SquadDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Button variant="ghost" size="sm" onClick={() => navigate(`/clients/${clientId}`)}>
+      <Button variant="ghost" size="sm" onClick={() => navigate(`/squads`)}>
         <ArrowLeft className="size-4" />
         Voltar para {client?.name ?? 'cliente'}
       </Button>
@@ -362,7 +364,7 @@ function AgentsList({ clientId, squad }: { clientId: string; squad: Squad }) {
         ) : (
           <ul className="space-y-2">
             {(agentsQuery.data ?? []).map((agent) => (
-              <AgentRow key={agent.id} agent={agent} onClick={() => navigate(`/clients/${clientId}/squads/${squad.id}/agents/${agent.id}`)} />
+              <AgentRow key={agent.id} agent={agent} onClick={() => navigate(`/squads/${squad.id}/agents/${agent.id}`)} />
             ))}
           </ul>
         )}
