@@ -3,7 +3,7 @@
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -14,6 +14,7 @@ from dev_autonomo.db.mixins import TimestampMixin
 
 if TYPE_CHECKING:
     from dev_autonomo.db.models.agent import AgentInstance
+    from dev_autonomo.db.models.stack_profile import StackProfile
 
 
 class SkillTemplate(Base, TimestampMixin):
@@ -50,4 +51,23 @@ class SkillTemplate(Base, TimestampMixin):
     # entre runs. NULL = agente ainda nao foi criado na Anthropic.
     anthropic_agent_id: Mapped[str | None] = mapped_column(String(64))
 
+    # Stack Knowledge (Bloco A do roadmap A-H):
+    # Skill paramétrico — quando set, system_prompt e renderizado em
+    # runtime a partir do template + variables. Convive com system_prompt_ref
+    # legado (skills antigas continuam funcionando).
+    system_prompt_template: Mapped[str | None] = mapped_column(Text)
+    template_variables: Mapped[dict | None] = mapped_column(JSONB)
+
+    # Skill foi gerada a partir de um StackProfile (via propose_skill_from_stack).
+    # NULL = skill manualmente criada (catalog tradicional).
+    parent_stack_profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("stack_profiles.id", ondelete="SET NULL"),
+        index=True,
+    )
+
     instances: Mapped[list["AgentInstance"]] = relationship(back_populates="skill_template")
+    parent_stack_profile: Mapped["StackProfile | None"] = relationship(
+        back_populates="spawned_skills",
+        foreign_keys=[parent_stack_profile_id],
+    )
