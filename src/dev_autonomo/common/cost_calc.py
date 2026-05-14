@@ -37,6 +37,7 @@ class CostBreakdown:
     num_calls: int
     total_input_tokens: int
     total_output_tokens: int
+    num_managed_sessions: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -47,6 +48,7 @@ class CostBreakdown:
             "full_cost_brl": float(self.full_cost_brl),
             "num_tasks": self.num_tasks,
             "num_calls": self.num_calls,
+            "num_managed_sessions": self.num_managed_sessions,
             "total_input_tokens": self.total_input_tokens,
             "total_output_tokens": self.total_output_tokens,
         }
@@ -151,10 +153,26 @@ async def cost_for_client_period(
         )
     ).scalar_one()
 
+    # Sessions Managed Agents (subset de num_calls com request_id no
+    # padrao "sesn_..." — managed_runner usa session_id como request_id).
+    n_managed_sessions = (
+        await session.execute(
+            select(func.count(ExternalApiCall.id)).where(
+                and_(
+                    ExternalApiCall.client_id == client_id,
+                    ExternalApiCall.occurred_at >= start_dt,
+                    ExternalApiCall.occurred_at <= end_dt,
+                    ExternalApiCall.request_id.like("sesn_%"),
+                )
+            )
+        )
+    ).scalar_one()
+
     return _compute_breakdown(
         direct_cost_usd=direct_usd,
         num_tasks=int(n_tasks or 0),
         num_calls=int(n_calls or 0),
+        num_managed_sessions=int(n_managed_sessions or 0),
         in_tokens=int(in_tokens or 0),
         out_tokens=int(out_tokens or 0),
         infra_overhead_pct=infra_pct,
@@ -181,6 +199,7 @@ def _compute_breakdown(
     infra_overhead_pct: Decimal,
     fixed_overhead_brl_per_task: Decimal,
     usd_to_brl_rate: Decimal,
+    num_managed_sessions: int = 0,
 ) -> CostBreakdown:
     direct_brl = (direct_cost_usd * usd_to_brl_rate).quantize(Decimal("0.01"))
     infra_brl = (direct_brl * infra_overhead_pct / Decimal("100")).quantize(Decimal("0.01"))
@@ -194,6 +213,7 @@ def _compute_breakdown(
         full_cost_brl=full_brl,
         num_tasks=num_tasks,
         num_calls=num_calls,
+        num_managed_sessions=num_managed_sessions,
         total_input_tokens=int(in_tokens),
         total_output_tokens=int(out_tokens),
     )
