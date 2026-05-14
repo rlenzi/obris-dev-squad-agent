@@ -1,6 +1,13 @@
 import { type ReactNode } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import { Building2, Flame, LayoutDashboard, LogOut } from 'lucide-react';
+import {
+  Building2,
+  DollarSign,
+  Flame,
+  LayoutDashboard,
+  LogOut,
+  Sparkles,
+} from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
@@ -14,6 +21,8 @@ interface NavItem {
 const NAV: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/clients', label: 'Clientes', icon: Building2 },
+  { to: '/cost', label: 'Custos', icon: DollarSign },
+  { to: '/skills', label: 'Skills', icon: Sparkles },
 ];
 
 export default function Layout({ children }: { children: ReactNode }) {

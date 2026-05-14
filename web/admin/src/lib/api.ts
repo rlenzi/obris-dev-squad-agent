@@ -529,6 +529,62 @@ export interface AgentRunDetail {
   calls_limit: number;
 }
 
+// === Cost (admin) ===
+
+export interface CostBreakdownResponse {
+  direct_cost_usd: string;
+  direct_cost_brl: string;
+  infra_overhead_brl: string;
+  fixed_overhead_brl: string;
+  full_cost_brl: string;
+  num_tasks: number;
+  num_calls: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+}
+
+export interface CostPeriodResponse {
+  client_id: string;
+  period_start: string; // ISO date YYYY-MM-DD
+  period_end: string;
+  breakdown: CostBreakdownResponse;
+}
+
+export interface CostByClientItem {
+  client_id: string;
+  client_slug: string;
+  client_name: string;
+  breakdown: CostBreakdownResponse;
+}
+
+export async function fetchCostByClient(
+  opts: { period_start?: string; period_end?: string; limit?: number } = {},
+): Promise<CostByClientItem[]> {
+  const params = new URLSearchParams();
+  if (opts.period_start) params.set('period_start', opts.period_start);
+  if (opts.period_end) params.set('period_end', opts.period_end);
+  if (opts.limit !== undefined) params.set('limit', String(opts.limit));
+  const qs = params.toString();
+  const { data } = await api.get<CostByClientItem[]>(
+    `/admin/cost/by-client${qs ? '?' + qs : ''}`,
+  );
+  return data;
+}
+
+export async function fetchClientCost(
+  clientId: string,
+  opts: { period_start?: string; period_end?: string } = {},
+): Promise<CostPeriodResponse> {
+  const params = new URLSearchParams();
+  if (opts.period_start) params.set('period_start', opts.period_start);
+  if (opts.period_end) params.set('period_end', opts.period_end);
+  const qs = params.toString();
+  const { data } = await api.get<CostPeriodResponse>(
+    `/admin/clients/${clientId}/cost${qs ? '?' + qs : ''}`,
+  );
+  return data;
+}
+
 export async function fetchAgentRunDetail(
   clientId: string,
   agentId: string,

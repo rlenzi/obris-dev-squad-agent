@@ -9,6 +9,8 @@ import ClientDetailPage from '@/pages/ClientDetail';
 import SquadDetailPage from '@/pages/SquadDetail';
 import AgentDetailPage from '@/pages/AgentDetail';
 import AgentRunDetailPage from '@/pages/AgentRunDetail';
+import CostPage from '@/pages/Cost';
+import SkillsCatalogPage from '@/pages/SkillsCatalog';
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -42,6 +44,22 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ClientsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/cost"
+        element={
+          <ProtectedRoute>
+            <CostPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/skills"
+        element={
+          <ProtectedRoute>
+            <SkillsCatalogPage />
           </ProtectedRoute>
         }
       />
