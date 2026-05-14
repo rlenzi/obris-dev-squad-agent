@@ -21,6 +21,7 @@ from dev_autonomo.db.models.rag_audit_log import RagAuditLog
 from dev_autonomo.db.models.rag_source import RagSource
 from dev_autonomo.db.models.squad import Manifest, Squad
 from dev_autonomo.db.models.squad_memory_store import SquadMemoryStore
+from dev_autonomo.db.models.stack import Stack
 from dev_autonomo.db.models.stack_profile import StackProfile
 from dev_autonomo.db.models.task import CrossSquadRequest, Task
 
@@ -44,6 +45,7 @@ __all__ = [
     "SkillTemplate",
     "Squad",
     "SquadMemoryStore",
+    "Stack",
     "StackProfile",
     "Task",
     "ToolAuthorizationAttempt",
