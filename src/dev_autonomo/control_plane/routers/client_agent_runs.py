@@ -26,7 +26,7 @@ from dev_autonomo.control_plane.services.agent_run_detail import (
 )
 from dev_autonomo.control_plane.services.agent_run_trigger import (
     TriggerError,
-    trigger_agent_run,
+    trigger_agent_run_smart,
 )
 from dev_autonomo.control_plane.services.agent_runs_query import list_agent_runs
 from dev_autonomo.db.models import Client
@@ -154,7 +154,7 @@ async def trigger_agent_run_endpoint(
         )
 
     try:
-        result = await trigger_agent_run(
+        result = await trigger_agent_run_smart(
             session=session,
             client=client,
             agent_id=aid,

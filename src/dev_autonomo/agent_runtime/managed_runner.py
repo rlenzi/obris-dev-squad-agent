@@ -37,7 +37,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dev_autonomo.common.claude_pricing import get_pricing
-from dev_autonomo.common.enums import ApiCallKind, ApiProvider
+from dev_autonomo.common.enums import ApiCallKind, ApiProvider, OutcomeStatus
 from dev_autonomo.config import get_settings
 from dev_autonomo.db.models import (
     AgentInstance,
@@ -86,6 +86,19 @@ class ManagedTaskSpec:
     # Os sub-agent IDs devem estar criados ANTES (resolva via DB e passe).
     multiagent: dict[str, Any] | None = None
 
+    # Resources mountados no container da session. Cada dict no formato
+    # aceito por sessions.create(resources=[...]):
+    #   {"type": "file", "file_id": "...", "mount_path": "/mnt/secrets/jira.env"}
+    #   {"type": "github_repository", "url": "...", "authorization_token": "...",
+    #    "checkout": {"type": "branch", "name": "main"}, "mount_path": "/mnt/repo"}
+    #   {"type": "memory_store", "memory_store_id": "...", "access": "read_write"}
+    resources: list[dict[str, Any]] = field(default_factory=list)
+
+    # Outcome opcional (Anthropic grader). Quando set, dispara
+    # user.define_outcome ANTES do user.message no stream.
+    # Formato: {"description": str, "rubric_text": str, "max_iterations": int}
+    outcome: dict[str, Any] | None = None
+
     user_prompt_builder: Any = None  # Callable[[str], str]
 
 
@@ -102,6 +115,8 @@ class ManagedRunResult:
     cache_creation_tokens: int
     cache_read_tokens: int
     status_final: str | None
+    outcome_verdict: str | None = None
+    outcome_iterations: int = 0
     error: str | None = None
 
 
@@ -268,15 +283,32 @@ def _stream_events(
     client: anthropic.Anthropic,
     session_id: str,
     user_message: str,
-) -> tuple[str, list[str]]:
+    outcome: dict[str, Any] | None = None,
+) -> tuple[str, list[str], str | None, int]:
     """Envia user.message e processa stream ate session.status_idle.
 
-    Retorna (output_text_concatenado, lista_de_tool_names).
+    Retorna (output_text, tool_names, outcome_verdict, outcome_iterations).
+    outcome_verdict e None se nenhum outcome foi definido.
+
+    Se ``outcome`` for fornecido, envia user.define_outcome ANTES do
+    user.message — ativa o grader independente da Anthropic.
     """
     tool_uses: list[str] = []
     output_parts: list[str] = []
+    outcome_verdict: str | None = None
+    outcome_iterations: int = 0
 
     with client.beta.sessions.events.stream(session_id) as stream:
+        if outcome:
+            client.beta.sessions.events.send(
+                session_id,
+                events=[{
+                    "type": "user.define_outcome",
+                    "description": outcome["description"],
+                    "rubric": {"type": "text", "content": outcome["rubric_text"]},
+                    "max_iterations": outcome.get("max_iterations", 3),
+                }],
+            )
         client.beta.sessions.events.send(
             session_id,
             events=[
@@ -319,9 +351,21 @@ def _stream_events(
                     "session.thread_created: agent=%s",
                     getattr(event, "agent_name", "?"),
                 )
+            elif etype and "outcome_evaluation" in etype:
+                # Captura iteration count e verdict final do grader.
+                iteration = getattr(event, "iteration", None)
+                if isinstance(iteration, int):
+                    outcome_iterations = max(outcome_iterations, iteration + 1)
+                result = getattr(event, "result", None)
+                if result is not None:
+                    outcome_verdict = result
+                logger.info(
+                    "outcome_evaluation: %s iter=%s result=%s",
+                    etype, iteration, result,
+                )
             elif etype == "session.status_idle":
                 break
-    return "".join(output_parts), tool_uses
+    return "".join(output_parts), tool_uses, outcome_verdict, outcome_iterations
 
 
 async def _record_usage(
@@ -446,14 +490,18 @@ async def run_managed_task(
         print(f"  environment  = {env_id}")
 
         # 3. Session
-        anth_session = anthropic_client.beta.sessions.create(
-            agent=agent_id,
-            environment_id=env_id,
-            title=f"{issue_key} - {agent_inst.name}",
-        )
+        session_kwargs: dict[str, Any] = {
+            "agent": agent_id,
+            "environment_id": env_id,
+            "title": f"{issue_key} - {agent_inst.name}",
+        }
+        if spec.resources:
+            session_kwargs["resources"] = spec.resources
+        anth_session = anthropic_client.beta.sessions.create(**session_kwargs)
         print(f"  session_id   = {anth_session.id}")
 
-        # Persiste session_id no Task local (rastreabilidade)
+        # Persiste session_id como coluna queryable + payload legacy.
+        task.anthropic_session_id = anth_session.id
         payload = dict(task.demand_payload or {})
         payload["anthropic_session_id"] = anth_session.id
         payload["anthropic_agent_id"] = agent_id
@@ -470,9 +518,11 @@ async def run_managed_task(
     error: str | None = None
     output_text = ""
     tool_uses: list[str] = []
+    outcome_verdict: str | None = None
+    outcome_iterations: int = 0
     try:
-        output_text, tool_uses = _stream_events(
-            anthropic_client, anth_session.id, user_message
+        output_text, tool_uses, outcome_verdict, outcome_iterations = _stream_events(
+            anthropic_client, anth_session.id, user_message, spec.outcome,
         )
     except Exception as exc:
         error = f"{type(exc).__name__}: {exc}"
@@ -494,9 +544,9 @@ async def run_managed_task(
     except Exception as exc:
         logger.warning("session.retrieve falhou: %s", exc)
 
-    # 6. Grava ExternalApiCall com usage agregado
-    if usage is not None:
-        async with session_scope() as session:
+    # 6. Grava ExternalApiCall com usage agregado + persiste outcome
+    async with session_scope() as session:
+        if usage is not None:
             cost = await _record_usage(
                 session,
                 client_id=local_client.id,
@@ -507,7 +557,19 @@ async def run_managed_task(
                 latency_ms=int(latency * 1000),
                 request_id=anth_session.id,
             )
-            await session.commit()
+        # Persiste outcome na Task se foi definido
+        if spec.outcome:
+            task_db = await session.get(Task, task.id)
+            if task_db is not None:
+                if outcome_verdict == "satisfied":
+                    task_db.outcome_status = OutcomeStatus.SATISFIED
+                elif outcome_verdict in ("failed", "unsatisfied"):
+                    task_db.outcome_status = OutcomeStatus.FAILED
+                else:
+                    task_db.outcome_status = OutcomeStatus.PENDING
+                task_db.outcome_iterations = outcome_iterations
+                task_db.outcome_rubric_ref = spec.outcome.get("rubric_ref")
+        await session.commit()
 
     # 7. Cleanup leve da session na Anthropic (opcional)
     try:
@@ -574,5 +636,7 @@ async def run_managed_task(
         cache_creation_tokens=cache_creation,
         cache_read_tokens=cache_read,
         status_final=status_final,
+        outcome_verdict=outcome_verdict,
+        outcome_iterations=outcome_iterations,
         error=error,
     )
