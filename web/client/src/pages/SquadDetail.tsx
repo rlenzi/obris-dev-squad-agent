@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { UptimeBadge } from '@/components/UptimeBadge';
 import {
   Card,
   CardContent,
@@ -77,6 +78,7 @@ export default function SquadDetailPage() {
           {squad.domain && (
             <span className="text-xs text-muted-foreground">· {squad.domain}</span>
           )}
+          <UptimeBadge />
         </div>
       </div>
 
