@@ -26,6 +26,7 @@ import {
   type SkillTemplate,
 } from '@/lib/api';
 import { useClientId } from '@/lib/use-client-id';
+import { formatApiError } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -373,11 +374,8 @@ function TriggerRunButton({
       setError(null);
       queryClient.invalidateQueries({ queryKey: ['agent-runs', clientId, agent.id] });
     },
-    onError: (err: unknown) => {
-      const detail =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data
-          ?.detail;
-      setError(detail ?? 'Falha ao disparar agente.');
+    onError: (err) => {
+      setError(formatApiError(err, 'Falha ao disparar agente.'));
     },
   });
 

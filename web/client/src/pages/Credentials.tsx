@@ -11,6 +11,7 @@ import {
   type Credential,
   type CredentialKind,
 } from '@/lib/api';
+import { formatApiError } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -175,8 +176,7 @@ function CreateCredentialDialog({
       queryClient.invalidateQueries({ queryKey: ['credentials', clientId] });
       onSuccess();
     },
-    onError: (err: any) =>
-      setError(err?.response?.data?.detail ?? 'Falha ao salvar'),
+    onError: (err) => setError(formatApiError(err, 'Falha ao salvar')),
   });
 
   function handleSubmit(event: FormEvent) {
@@ -266,8 +266,8 @@ function RotateCredentialDialog({
       setValue('');
       onSuccess();
     },
-    onError: (err: any) =>
-      setError(err?.response?.data?.detail ?? 'Falha ao rotacionar'),
+    onError: (err) =>
+      setError(formatApiError(err, 'Falha ao rotacionar')),
   });
 
   function handleSubmit(event: FormEvent) {
