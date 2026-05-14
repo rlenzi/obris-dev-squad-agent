@@ -109,23 +109,33 @@ async def list_agent_runs(
     if task_ids:
         meta_rows = (
             await session.execute(
-                select(_Task.id, _Task.jira_issue_key, _Task.title).where(
-                    _Task.id.in_(task_ids)
-                )
+                select(
+                    _Task.id, _Task.jira_issue_key, _Task.title,
+                    _Task.outcome_status, _Task.outcome_iterations,
+                ).where(_Task.id.in_(task_ids))
             )
         ).all()
-        task_meta = {r.id: (r.jira_issue_key, r.title) for r in meta_rows}
+        task_meta = {
+            r.id: (r.jira_issue_key, r.title, r.outcome_status, r.outcome_iterations)
+            for r in meta_rows
+        }
 
     items = [
         AgentRunItem(
             task_id=row.task_id,
-            jira_issue_key=task_meta.get(row.task_id, (None, None))[0],
-            title=task_meta.get(row.task_id, (None, None))[1],
+            jira_issue_key=task_meta.get(row.task_id, (None, None, None, 0))[0],
+            title=task_meta.get(row.task_id, (None, None, None, 0))[1],
             tool_calls_count=row.tool_calls_count,
             total_cost_usd=row.total_cost_usd,
             started_at=row.started_at,
             ended_at=row.ended_at,
             status=row.status,
+            outcome_status=(
+                task_meta.get(row.task_id, (None, None, None, 0))[2].value
+                if task_meta.get(row.task_id, (None, None, None, 0))[2] is not None
+                else "skipped"
+            ),
+            outcome_iterations=task_meta.get(row.task_id, (None, None, None, 0))[3] or 0,
         )
         for row in rows
     ]

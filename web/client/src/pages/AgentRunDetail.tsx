@@ -104,6 +104,12 @@ export default function AgentRunDetailPage() {
             </h1>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-muted-foreground">
               <RunStatusBadge status={run.status} />
+              {run.outcome_status !== 'skipped' && (
+                <OutcomeBadge
+                  status={run.outcome_status}
+                  iterations={run.outcome_iterations}
+                />
+              )}
               {run.title && (
                 <span className="text-sm">· {run.title}</span>
               )}
@@ -394,6 +400,28 @@ function RunStatusBadge({ status }: { status: RunStatus }) {
   };
   const m = map[status] ?? { variant: 'outline', label: status };
   return <Badge variant={m.variant}>{m.label}</Badge>;
+}
+
+function OutcomeBadge({
+  status,
+  iterations,
+}: {
+  status: 'pending' | 'satisfied' | 'failed' | 'skipped';
+  iterations: number;
+}) {
+  const map: Record<typeof status, { variant: any; label: string; emoji: string }> = {
+    pending: { variant: 'warning', label: 'Rubric pendente', emoji: '⏳' },
+    satisfied: { variant: 'success', label: 'Rubric ✓', emoji: '✓' },
+    failed: { variant: 'danger', label: 'Rubric ✗', emoji: '✗' },
+    skipped: { variant: 'outline', label: 'Sem rubric', emoji: '—' },
+  };
+  const m = map[status];
+  const suffix = iterations > 0 ? ` (iter ${iterations})` : '';
+  return (
+    <Badge variant={m.variant} title={`Outcome grader: ${status}${suffix}`}>
+      {m.emoji} {m.label}{suffix}
+    </Badge>
+  );
 }
 
 function formatNum(n: number): string {
