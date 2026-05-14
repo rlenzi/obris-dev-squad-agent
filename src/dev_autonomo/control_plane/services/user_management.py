@@ -48,31 +48,22 @@ async def create_user_for_client(
     if client is None:
         raise UserManagementError(f"cliente {client_id} nao encontrado.")
 
-    # Email duplicado?
+    # Regra: 1 user = 1 tenant. Email ja em uso em qualquer client/admin
+    # platform e rejeitado — admin precisa usar OUTRO email pra criar
+    # acesso de cliente, mesmo que seja a propria pessoa.
     existing = (
         await session.execute(select(User).where(User.email == email))
     ).scalar_one_or_none()
     if existing is not None:
-        # Se ja tem membership nesse cliente, erro.
-        existing_mem = (
-            await session.execute(
-                select(ClientMembership).where(
-                    ClientMembership.client_id == client_id,
-                    ClientMembership.user_id == existing.id,
-                )
-            )
-        ).scalar_one_or_none()
-        if existing_mem is not None:
+        if existing.is_system_admin:
             raise UserManagementError(
-                f"email '{email}' ja tem acesso a esse cliente."
+                f"email '{email}' pertence a um system_admin da plataforma. "
+                f"Use outro email pra acesso de cliente."
             )
-        # User existe mas sem membership aqui — cria so a membership.
-        new_mem = ClientMembership(
-            client_id=client_id, user_id=existing.id, role=role
+        raise UserManagementError(
+            f"email '{email}' ja esta em uso por outra conta de cliente. "
+            f"Cada cliente deve ter conta de email proprio (1 user = 1 tenant)."
         )
-        session.add(new_mem)
-        await session.flush()
-        return existing, new_mem
 
     # Cria user + membership atomicamente
     user = User(
