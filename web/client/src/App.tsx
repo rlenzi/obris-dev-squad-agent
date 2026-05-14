@@ -9,7 +9,14 @@ import SquadDetailPage from '@/pages/SquadDetail';
 import AgentDetailPage from '@/pages/AgentDetail';
 import AgentRunDetailPage from '@/pages/AgentRunDetail';
 import CredentialsPage from '@/pages/Credentials';
+import CostPage from '@/pages/Cost';
 import ComingSoonPage from '@/pages/ComingSoon';
+import { useClientId } from '@/lib/use-client-id';
+
+function CredentialsWithClient() {
+  const clientId = useClientId();
+  return <CredentialsPage clientId={clientId} />;
+}
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -93,7 +100,7 @@ export default function App() {
         path="/credentials"
         element={
           <ProtectedRoute>
-            <CredentialsPage />
+            <CredentialsWithClient />
           </ProtectedRoute>
         }
       />

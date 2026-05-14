@@ -1,8 +1,7 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, type FormEvent } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-import { useClientId } from '@/lib/use-client-id';
   ArrowLeft,
   Bot,
   Clock,
@@ -11,6 +10,7 @@ import { useClientId } from '@/lib/use-client-id';
   History,
   KeyRound,
   Layers,
+  Play,
   Wrench,
 } from 'lucide-react';
 import {
@@ -18,11 +18,14 @@ import {
   fetchAgents,
   fetchSkillTemplate,
   fetchSquad,
+  triggerAgentRun,
   type AgentInstance,
   type AgentRunItem,
+  type AgentRunTriggerResponse,
   type RunStatus,
   type SkillTemplate,
 } from '@/lib/api';
+import { useClientId } from '@/lib/use-client-id';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -32,6 +35,17 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 export default function AgentDetailPage() {
   const clientId = useClientId();
@@ -93,9 +107,12 @@ export default function AgentDetailPage() {
             </div>
           </div>
         </div>
-        <div className="text-right text-xs text-muted-foreground">
-          <div>id</div>
-          <div className="font-mono">{agent.id}</div>
+        <div className="flex items-start gap-3">
+          <TriggerRunButton agent={agent} clientId={clientId} />
+          <div className="text-right text-xs text-muted-foreground">
+            <div>id</div>
+            <div className="font-mono">{agent.id}</div>
+          </div>
         </div>
       </div>
 
@@ -214,7 +231,6 @@ function RunsCard({
                   <RunRow
                     key={run.task_id}
                     run={run}
-                    clientId={clientId}
                     squadId={squadId}
                     agentId={agentId}
                   />
@@ -251,12 +267,10 @@ function RunsCard({
 
 function RunRow({
   run,
-  clientId,
   squadId,
   agentId,
 }: {
   run: AgentRunItem;
-  clientId: string;
   squadId: string;
   agentId: string;
 }) {
@@ -331,6 +345,119 @@ function RunRow({
     </tr>
   );
 }
+
+function TriggerRunButton({
+  agent,
+  clientId,
+}: {
+  agent: AgentInstance;
+  clientId: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [issueKey, setIssueKey] = useState('');
+  const [result, setResult] = useState<AgentRunTriggerResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const TRIGGERABLE_TIERS = ['ba', 'architect', 'dev', 'reviewer'];
+  const tier = agent.domain_business?.toLowerCase();
+  const supported = tier ? TRIGGERABLE_TIERS.includes(tier) : false;
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      triggerAgentRun(clientId, agent.id, {
+        jira_issue_key: issueKey.trim().toUpperCase(),
+      }),
+    onSuccess: (data) => {
+      setResult(data);
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ['agent-runs', clientId, agent.id] });
+    },
+    onError: (err: unknown) => {
+      const detail =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data
+          ?.detail;
+      setError(detail ?? 'Falha ao disparar agente.');
+    },
+  });
+
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!issueKey.trim()) return;
+    setError(null);
+    setResult(null);
+    mutation.mutate();
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) {
+          setIssueKey('');
+          setResult(null);
+          setError(null);
+        }
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button size="sm" disabled={!supported} title={supported ? '' : `Tier ${tier} não suporta trigger pelo painel`}>
+          <Play className="size-4" /> Rodar agente
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Rodar {agent.name}</DialogTitle>
+          <DialogDescription>
+            Dispara o agente contra uma issue do Jira. O run sobe em background;
+            acompanhe na aba de execuções abaixo.
+          </DialogDescription>
+        </DialogHeader>
+        {result ? (
+          <div className="space-y-2 text-sm">
+            <p>
+              Disparado! task_id <code className="font-mono">{result.task_id}</code>{' '}
+              (pid {result.pid}).
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Log: <code className="font-mono">{result.log_path}</code>
+            </p>
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
+                Fechar
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="issue">Issue Jira *</Label>
+              <Input
+                id="issue"
+                value={issueKey}
+                onChange={(e) => setIssueKey(e.target.value)}
+                placeholder="LEO-53"
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Ex: <code>LEO-53</code>. O agente segue o fluxo do tier dele
+                (BA refina, Architect decompõe, Dev implementa, Reviewer revisa).
+              </p>
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <DialogFooter>
+              <Button type="submit" disabled={mutation.isPending || !issueKey.trim()}>
+                {mutation.isPending ? 'Disparando…' : 'Disparar'}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 
 function RunStatusBadge({ status }: { status: RunStatus }) {
   const map: Record<RunStatus, { variant: any; label: string }> = {

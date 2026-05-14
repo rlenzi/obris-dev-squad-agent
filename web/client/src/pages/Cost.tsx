@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { DollarSign, Calendar } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
-import { fetchClientCost, type CostBreakdownResponse } from '@/lib/api';
+import { fetchClientCost } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
   Card,

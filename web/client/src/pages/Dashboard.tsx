@@ -106,7 +106,7 @@ export default function ClientDashboardPage() {
                           {squad.slug}
                         </div>
                       </div>
-                      <Badge variant={squad.status === 'ACTIVE' ? 'success' : 'outline'}>
+                      <Badge variant={squad.status === 'active' ? 'success' : 'outline'}>
                         {squad.status}
                       </Badge>
                     </div>

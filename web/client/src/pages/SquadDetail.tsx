@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Bot, GitBranch, Plus, Trash2 } from 'lucide-react';
 import {
-import { useClientId } from '@/lib/use-client-id';
   createAgent,
   fetchAgents,
   fetchClient,
@@ -17,6 +16,7 @@ import { useClientId } from '@/lib/use-client-id';
   type SkillTemplate,
   type Squad,
 } from '@/lib/api';
+import { useClientId } from '@/lib/use-client-id';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';

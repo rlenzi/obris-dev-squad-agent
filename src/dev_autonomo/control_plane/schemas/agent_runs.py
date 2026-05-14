@@ -90,3 +90,27 @@ class AgentRunDetail(BaseModel):
     calls_total: int = Field(ge=0)
     calls_offset: int = Field(ge=0)
     calls_limit: int = Field(ge=1)
+
+
+class AgentRunTriggerRequest(BaseModel):
+    """Disparo manual de uma run de agente a partir do painel."""
+
+    jira_issue_key: str = Field(
+        min_length=2,
+        max_length=64,
+        description="Chave da issue Jira (ex: LEO-53).",
+    )
+
+
+class AgentRunTriggerResponse(BaseModel):
+    """Resposta do disparo: identifica o subprocess + Task local criada."""
+
+    task_id: UUID
+    jira_issue_key: str
+    agent_id: UUID
+    tier: str
+    pid: int = Field(description="PID do subprocess detached.")
+    log_path: str = Field(
+        description="Caminho do arquivo de log do run no host."
+    )
+    status: Literal["started"] = "started"
