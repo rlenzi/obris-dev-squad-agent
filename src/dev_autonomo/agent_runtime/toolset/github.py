@@ -380,6 +380,120 @@ class GitHubGetPRChecksTool:
         )
 
 
+@dataclass
+class GitHubGetReviewCommentsTool:
+    """Le a ultima review e os comentarios inline de um PR.
+
+    Usado pelo Dev quando reage a um REQUEST_CHANGES do Reviewer: precisa
+    ler exatamente o que o Reviewer pediu (general + inline comments com
+    path+linha) pra produzir o fix.
+    """
+
+    name: str = "github_get_review_comments"
+    description: str = (
+        "Le as reviews submetidas e os comentarios inline (com path+linha) "
+        "num PR. Use ANTES de fazer fix em resposta a REQUEST_CHANGES — voce "
+        "precisa saber exatamente o que o Reviewer pediu antes de mexer no "
+        "codigo. Retorna lista de reviews (com state APPROVE/REQUEST_CHANGES/"
+        "COMMENT + body geral) e lista de comentarios inline (path, line, "
+        "body, user_login)."
+    )
+    input_schema: dict[str, Any] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        self.input_schema = {
+            "type": "object",
+            "properties": {
+                "pr_number": {
+                    "type": "integer",
+                    "description": "Numero do PR a consultar.",
+                },
+                "only_latest_request_changes": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": (
+                        "Se True (default), retorna apenas a review mais "
+                        "recente do tipo REQUEST_CHANGES (e seus inline "
+                        "comments). Se False, retorna tudo."
+                    ),
+                },
+            },
+            "required": ["pr_number"],
+        }
+
+    async def execute(self, ctx: AgentRunContext, inputs: dict[str, Any]) -> ToolResult:
+        if not ctx.workspace_repo:
+            return ToolResult.error(
+                "workspace_repo ausente no contexto", code="no_workspace"
+            )
+
+        try:
+            owner, repo_name = _extract_owner_repo(ctx.workspace_repo)
+        except ValueError as exc:
+            return ToolResult.error(f"URL invalido: {exc}", code="bad_repo_url")
+
+        authz = await ctx.enforcer.check_repo(ctx.workspace_repo)
+        if not authz.allowed:
+            return ToolResult.error(
+                authz.suggestion or "repo nao autorizado pelo manifest",
+                code=authz.reason,
+            )
+
+        try:
+            token = await get_secret(
+                ctx.session,
+                client_id=ctx.client_id,
+                kind=SecretKind.GITHUB_TOKEN,
+            )
+        except CredentialNotFoundError as exc:
+            return ToolResult.error(str(exc), code="credential_missing")
+
+        await ctx.session.commit()
+
+        pr_number: int = int(inputs["pr_number"])
+        only_latest = bool(inputs.get("only_latest_request_changes", True))
+        client = GitHubClient(token=token)
+
+        try:
+            reviews = await client.list_pull_request_reviews(
+                owner, repo_name, pr_number
+            )
+            inline = await client.list_pull_request_review_comments(
+                owner, repo_name, pr_number
+            )
+        except Exception as exc:
+            return ToolResult.error(
+                f"github API falhou: {exc}", code="github_error"
+            )
+
+        latest_request: dict[str, Any] | None = None
+        if reviews:
+            for rev in reversed(reviews):
+                if rev.get("state") == "CHANGES_REQUESTED":
+                    latest_request = rev
+                    break
+
+        result: dict[str, Any] = {
+            "pr_number": pr_number,
+            "latest_request_changes": latest_request,
+        }
+
+        if only_latest and latest_request is not None:
+            related = [
+                c
+                for c in inline
+                if (c.get("user_login") == latest_request.get("user_login"))
+            ]
+            result["inline_comments"] = related
+            result["inline_comments_count"] = len(related)
+        else:
+            result["reviews"] = reviews
+            result["inline_comments"] = inline
+            result["inline_comments_count"] = len(inline)
+
+        return ToolResult.ok(result)
+
+
 _DECISION_TO_EVENT: dict[str, str] = {
     "approve": "APPROVE",
     "request_changes": "REQUEST_CHANGES",

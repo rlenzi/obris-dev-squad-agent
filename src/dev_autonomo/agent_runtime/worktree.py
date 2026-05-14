@@ -161,11 +161,28 @@ class GitWorktreeManager:
         client_id: UUID,
         repo_url: str,
         task_handle: str,
-        new_branch: str,
+        new_branch: str | None = None,
         base_branch: str | None = None,
+        checkout_existing_branch: str | None = None,
         github_token: str | None = None,
     ) -> CheckedOutWorktree:
-        """Cria um worktree fresco a partir do bare clone, em uma nova branch."""
+        """Cria worktree fresco a partir do bare clone.
+
+        Dois modos:
+        - ``new_branch`` definido (default): cria branch nova a partir de
+          ``base_branch`` (ou default do remote).
+        - ``checkout_existing_branch`` definido: faz checkout de uma branch
+          remota que já existe (usado por agentes que estão respondendo a
+          REQUEST_CHANGES sem criar branch nova).
+
+        Exatamente um dos dois deve estar definido.
+        """
+        if (new_branch is None) == (checkout_existing_branch is None):
+            raise ValueError(
+                "Defina exatamente um: new_branch (cria) OU "
+                "checkout_existing_branch (reusa)."
+            )
+
         bare = await self._ensure_bare(client_id, repo_url, github_token=github_token)
         slug = normalize_repo_id(repo_url)
 
@@ -185,18 +202,55 @@ class GitWorktreeManager:
             shutil.rmtree(wt_path, ignore_errors=True)
             await _run_git(bare, ["worktree", "prune"], check=False)
 
-        # Cria worktree a partir do base branch remoto
-        logger.info(
-            "Criando worktree: bare=%s path=%s branch=%s base=origin/%s",
-            bare,
-            wt_path,
-            new_branch,
-            base_branch,
-        )
-        await _run_git(
-            bare,
-            ["worktree", "add", "-b", new_branch, str(wt_path), base_branch],
-        )
+        if checkout_existing_branch is not None:
+            # Modo "address review": fetch da branch existente + worktree
+            # add sem -b. Usa origin/<branch> como starting point.
+            target = checkout_existing_branch
+            await _run_git(
+                bare, ["fetch", "origin", target], check=False
+            )
+            logger.info(
+                "Criando worktree em branch existente: bare=%s path=%s "
+                "branch=%s",
+                bare,
+                wt_path,
+                target,
+            )
+            await _run_git(
+                bare,
+                [
+                    "worktree",
+                    "add",
+                    "--track",
+                    "-b",
+                    target,
+                    str(wt_path),
+                    f"origin/{target}",
+                ],
+                # Se branch local ja existe, fallback sem -b
+                check=False,
+            )
+            # Fallback: branch local já existia
+            if not (wt_path / ".git").exists():
+                await _run_git(
+                    bare,
+                    ["worktree", "add", str(wt_path), target],
+                )
+            effective_branch = target
+        else:
+            # Modo padrão: cria branch nova
+            logger.info(
+                "Criando worktree: bare=%s path=%s branch=%s base=origin/%s",
+                bare,
+                wt_path,
+                new_branch,
+                base_branch,
+            )
+            await _run_git(
+                bare,
+                ["worktree", "add", "-b", new_branch, str(wt_path), base_branch],
+            )
+            effective_branch = new_branch  # type: ignore[assignment]
         # Configura identidade do git no worktree
         await _run_git(wt_path, ["config", "user.name", "obris-agent"], check=False)
         await _run_git(
@@ -213,7 +267,7 @@ class GitWorktreeManager:
             path=wt_path,
             repo_url=repo_url,
             repo_slug=slug,
-            branch=new_branch,
+            branch=effective_branch,
             base_branch=base_branch,
             client_id=client_id,
             task_handle=task_handle,

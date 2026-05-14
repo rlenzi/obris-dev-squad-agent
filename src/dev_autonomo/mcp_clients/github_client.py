@@ -264,6 +264,74 @@ class GitHubClient:
                     break
         return files
 
+    async def list_pull_request_reviews(
+        self, owner: str, repo: str, number: int
+    ) -> list[dict[str, Any]]:
+        """Lista reviews submetidas no PR (APPROVE, REQUEST_CHANGES, COMMENT).
+
+        Retorna lista ordenada cronologicamente. Cada item contém:
+        ``id``, ``user_login``, ``state``, ``body``, ``submitted_at``.
+        """
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+            resp = await client.get(
+                f"{GITHUB_API}/repos/{owner}/{repo}/pulls/{number}/reviews",
+                headers=self._headers,
+                params={"per_page": 100},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return [
+                {
+                    "id": item.get("id"),
+                    "user_login": (item.get("user") or {}).get("login"),
+                    "state": item.get("state"),
+                    "body": item.get("body", "") or "",
+                    "submitted_at": item.get("submitted_at"),
+                }
+                for item in data
+            ]
+
+    async def list_pull_request_review_comments(
+        self, owner: str, repo: str, number: int
+    ) -> list[dict[str, Any]]:
+        """Lista comentários *inline* de review (com path + linha).
+
+        Diferente dos comentários gerais da issue, são os comentários presos
+        a linhas específicas do diff. Retorna ``path``, ``line``, ``body``,
+        ``user_login``, ``in_reply_to_id`` (None se thread root), ``side``.
+        Pagina automaticamente até 300 comentários (3 páginas de 100).
+        """
+        max_pages = 3
+        body_limit = 4 * 1024  # 4 KB por comentário
+        comments: list[dict[str, Any]] = []
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+            for page in range(1, max_pages + 1):
+                resp = await client.get(
+                    f"{GITHUB_API}/repos/{owner}/{repo}/pulls/{number}/comments",
+                    headers=self._headers,
+                    params={"per_page": 100, "page": page},
+                )
+                resp.raise_for_status()
+                batch = resp.json()
+                for item in batch:
+                    body = item.get("body", "") or ""
+                    if len(body) > body_limit:
+                        body = body[:body_limit] + "\n... [body truncado em 4 KB]"
+                    comments.append(
+                        {
+                            "id": item.get("id"),
+                            "user_login": (item.get("user") or {}).get("login"),
+                            "path": item.get("path"),
+                            "line": item.get("line") or item.get("original_line"),
+                            "side": item.get("side"),
+                            "body": body,
+                            "in_reply_to_id": item.get("in_reply_to_id"),
+                        }
+                    )
+                if len(batch) < 100:
+                    break
+        return comments
+
     async def close_pull_request(
         self, owner: str, repo: str, number: int
     ) -> dict[str, Any]:
