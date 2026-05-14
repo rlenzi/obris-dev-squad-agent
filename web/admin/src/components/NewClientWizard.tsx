@@ -1,13 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Check, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import {
   createClient,
-  createSquad,
+  createUserForClient,
   updateBillingPlan,
   type ClientCreate,
-  type SquadCreate,
 } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,8 +23,6 @@ import { cn } from '@/lib/utils';
 interface ClientForm {
   slug: string;
   name: string;
-  jiraUrl: string;
-  jiraEmail: string;
 }
 
 interface BillingForm {
@@ -39,12 +36,10 @@ interface BillingForm {
   usdToBrlRate: string;
 }
 
-interface SquadForm {
-  enabled: boolean;
-  slug: string;
-  name: string;
-  description: string;
-  domain: string;
+interface UserForm {
+  fullName: string;
+  email: string;
+  password: string;
 }
 
 const PLAN_DEFAULTS: Record<BillingForm['planKind'], Omit<BillingForm, 'planKind'>> = {
@@ -77,7 +72,21 @@ const PLAN_DEFAULTS: Record<BillingForm['planKind'], Omit<BillingForm, 'planKind
   },
 };
 
-const STEPS = ['Cliente', 'Plano', 'Primeira squad', 'Revisão'] as const;
+const STEPS = ['Cliente', 'Plano', 'Usuário', 'Revisão'] as const;
+
+const PASSWORD_ALPHABET =
+  'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%&*-_+=';
+
+function randomPassword(length: number = 16): string {
+  const chars = new Array(length);
+  const cryptoObj = window.crypto;
+  const array = new Uint32Array(length);
+  cryptoObj.getRandomValues(array);
+  for (let i = 0; i < length; i++) {
+    chars[i] = PASSWORD_ALPHABET[array[i] % PASSWORD_ALPHABET.length];
+  }
+  return chars.join('');
+}
 
 export default function NewClientWizard({ onSuccess }: { onSuccess: () => void }) {
   const queryClient = useQueryClient();
@@ -89,8 +98,6 @@ export default function NewClientWizard({ onSuccess }: { onSuccess: () => void }
   const [client, setClient] = useState<ClientForm>({
     slug: '',
     name: '',
-    jiraUrl: '',
-    jiraEmail: '',
   });
 
   const [billing, setBilling] = useState<BillingForm>({
@@ -98,12 +105,10 @@ export default function NewClientWizard({ onSuccess }: { onSuccess: () => void }
     ...PLAN_DEFAULTS.starter,
   });
 
-  const [squad, setSquad] = useState<SquadForm>({
-    enabled: true,
-    slug: '',
-    name: '',
-    description: '',
-    domain: '',
+  const [user, setUser] = useState<UserForm>({
+    fullName: '',
+    email: '',
+    password: '',
   });
 
   const fullMutation = useMutation({
@@ -111,8 +116,6 @@ export default function NewClientWizard({ onSuccess }: { onSuccess: () => void }
       const payload: ClientCreate = {
         slug: client.slug,
         name: client.name,
-        jira_workspace_url: client.jiraUrl || undefined,
-        jira_email: client.jiraEmail || undefined,
       };
       const created = await createClient(payload);
 
@@ -127,15 +130,12 @@ export default function NewClientWizard({ onSuccess }: { onSuccess: () => void }
         usd_to_brl_rate: billing.usdToBrlRate,
       });
 
-      if (squad.enabled && squad.slug && squad.name) {
-        const payloadSquad: SquadCreate = {
-          slug: squad.slug,
-          name: squad.name,
-          description: squad.description || undefined,
-          domain: squad.domain || undefined,
-        };
-        await createSquad(created.id, payloadSquad);
-      }
+      await createUserForClient(created.id, {
+        email: user.email,
+        full_name: user.fullName,
+        password: user.password,
+        role: 'client_admin',
+      });
 
       return created;
     },
@@ -162,8 +162,11 @@ export default function NewClientWizard({ onSuccess }: { onSuccess: () => void }
       );
     }
     if (step === 2) {
-      if (!squad.enabled) return true;
-      return Boolean(squad.slug && squad.name);
+      return Boolean(
+        user.fullName.trim() &&
+          user.email.includes('@') &&
+          user.password.length >= 8,
+      );
     }
     return true;
   }
@@ -183,7 +186,9 @@ export default function NewClientWizard({ onSuccess }: { onSuccess: () => void }
       <DialogHeader>
         <DialogTitle>Novo cliente</DialogTitle>
         <DialogDescription>
-          Wizard em {STEPS.length} passos: dados, plano de billing, primeira squad e revisão.
+          Cria o tenant, define billing e o usuário administrador inicial.
+          O cliente recebe email + senha pra entrar no painel e configurar
+          squad/credenciais/agentes por conta própria.
         </DialogDescription>
       </DialogHeader>
 
@@ -192,8 +197,8 @@ export default function NewClientWizard({ onSuccess }: { onSuccess: () => void }
       <form onSubmit={handleNext} className="space-y-4">
         {step === 0 && <StepClient form={client} setForm={setClient} />}
         {step === 1 && <StepBilling form={billing} setForm={setBilling} />}
-        {step === 2 && <StepSquad form={squad} setForm={setSquad} clientSlug={client.slug} />}
-        {step === 3 && <StepReview client={client} billing={billing} squad={squad} />}
+        {step === 2 && <StepUser form={user} setForm={setUser} />}
+        {step === 3 && <StepReview client={client} billing={billing} user={user} />}
 
         {error && <p className="text-sm text-destructive">{error}</p>}
 
@@ -300,25 +305,10 @@ function StepClient({
           required
         />
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="jiraUrl">Jira workspace URL</Label>
-        <Input
-          id="jiraUrl"
-          value={form.jiraUrl}
-          onChange={(e) => setForm({ ...form, jiraUrl: e.target.value })}
-          placeholder="https://acme.atlassian.net"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="jiraEmail">Jira email</Label>
-        <Input
-          id="jiraEmail"
-          type="email"
-          value={form.jiraEmail}
-          onChange={(e) => setForm({ ...form, jiraEmail: e.target.value })}
-          placeholder="admin@acme.com"
-        />
-      </div>
+      <p className="text-xs text-muted-foreground">
+        Jira, GitHub e demais credenciais são configurados pelo próprio cliente
+        no primeiro acesso ao painel dele.
+      </p>
     </div>
   );
 }
@@ -402,78 +392,67 @@ function StepBilling({
   );
 }
 
-function StepSquad({
+function StepUser({
   form,
   setForm,
-  clientSlug,
 }: {
-  form: SquadForm;
-  setForm: (f: SquadForm) => void;
-  clientSlug: string;
+  form: UserForm;
+  setForm: (f: UserForm) => void;
 }) {
   return (
     <div className="space-y-3">
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={form.enabled}
-          onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
-          className="size-4"
+      <p className="text-sm text-muted-foreground">
+        Esse usuário será o <strong>administrador inicial</strong> do tenant.
+        Anote a senha e passe pra ele por canal seguro — não há email
+        automático.
+      </p>
+      <div className="space-y-1.5">
+        <Label htmlFor="user-name">Nome completo *</Label>
+        <Input
+          id="user-name"
+          value={form.fullName}
+          onChange={(e) => setForm({ ...form, fullName: e.target.value })}
+          placeholder="João Silva"
+          required
         />
-        Criar primeira squad agora
-        <span className="text-xs text-muted-foreground">(você pode adicionar mais depois)</span>
-      </label>
-
-      {form.enabled && (
-        <div className="space-y-3 rounded-md border bg-muted/30 p-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="squad-slug">Slug *</Label>
-            <Input
-              id="squad-slug"
-              value={form.slug}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
-                })
-              }
-              placeholder="plataforma"
-              pattern="^[a-z0-9][a-z0-9-]*$"
-            />
-            <p className="text-xs text-muted-foreground">
-              Ex: <code>plataforma</code>, <code>mobile</code>, <code>backend</code>.
-              Combina com cliente {clientSlug && <code>{clientSlug}</code>}.
-            </p>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="squad-name">Nome *</Label>
-            <Input
-              id="squad-name"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Squad Plataforma"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="squad-domain">Domínio</Label>
-            <Input
-              id="squad-domain"
-              value={form.domain}
-              onChange={(e) => setForm({ ...form, domain: e.target.value })}
-              placeholder="backend, frontend, mobile…"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="squad-desc">Descrição</Label>
-            <Input
-              id="squad-desc"
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-              placeholder="Time responsável por…"
-            />
-          </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="user-email">Email *</Label>
+        <Input
+          id="user-email"
+          type="email"
+          value={form.email}
+          onChange={(e) => setForm({ ...form, email: e.target.value })}
+          placeholder="admin@acme.com"
+          required
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="user-password">Senha *</Label>
+        <div className="flex gap-2">
+          <Input
+            id="user-password"
+            type="text"
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+            placeholder="mínimo 8 caracteres"
+            minLength={8}
+            required
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setForm({ ...form, password: randomPassword(16) })}
+            title="Gera senha aleatória de 16 caracteres"
+          >
+            <RefreshCw className="size-4" /> Gerar
+          </Button>
         </div>
-      )}
+        <p className="text-xs text-muted-foreground">
+          Visível como texto pra você copiar — feche o wizard só depois de salvar.
+        </p>
+      </div>
     </div>
   );
 }
@@ -481,19 +460,17 @@ function StepSquad({
 function StepReview({
   client,
   billing,
-  squad,
+  user,
 }: {
   client: ClientForm;
   billing: BillingForm;
-  squad: SquadForm;
+  user: UserForm;
 }) {
   return (
     <div className="space-y-3 text-sm">
       <Section title="Cliente">
-        <ReviewRow label="Slug" value={client.slug} />
+        <ReviewRow label="Slug" value={client.slug} mono />
         <ReviewRow label="Nome" value={client.name} />
-        {client.jiraUrl && <ReviewRow label="Jira" value={client.jiraUrl} />}
-        {client.jiraEmail && <ReviewRow label="Jira email" value={client.jiraEmail} />}
       </Section>
 
       <Section title="Plano">
@@ -505,19 +482,14 @@ function StepReview({
         <ReviewRow label="Câmbio USD→BRL" value={billing.usdToBrlRate} />
       </Section>
 
-      <Section title="Squad">
-        {squad.enabled && squad.slug ? (
-          <>
-            <ReviewRow label="Slug" value={squad.slug} />
-            <ReviewRow label="Nome" value={squad.name} />
-            {squad.domain && <ReviewRow label="Domínio" value={squad.domain} />}
-            {squad.description && <ReviewRow label="Descrição" value={squad.description} />}
-          </>
-        ) : (
-          <p className="text-xs italic text-muted-foreground">
-            Nenhuma squad inicial — você cria depois pelo painel.
-          </p>
-        )}
+      <Section title="Usuário admin inicial">
+        <ReviewRow label="Nome" value={user.fullName} />
+        <ReviewRow label="Email" value={user.email} mono />
+        <ReviewRow label="Senha" value={user.password} mono />
+        <p className="mt-1 text-xs italic text-muted-foreground">
+          Copie a senha agora — ela não fica salva em lugar nenhum em texto
+          plano depois.
+        </p>
       </Section>
     </div>
   );
