@@ -27,6 +27,7 @@ from dev_autonomo.control_plane.routers import client_retrieval as client_retrie
 from dev_autonomo.control_plane.routers import client_skill_proposer as client_skill_proposer_router
 from dev_autonomo.control_plane.routers import client_squad_knowledge as client_squad_knowledge_router
 from dev_autonomo.control_plane.routers import client_squads as client_squads_router
+from dev_autonomo.control_plane.routers import client_stacks as client_stacks_router
 from dev_autonomo.control_plane.routers import client_users as client_users_router
 from dev_autonomo.control_plane.routers import cost as cost_router
 from dev_autonomo.control_plane.routers import health as health_router
@@ -80,6 +81,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_users_router.router)
     app.include_router(client_squads_router.router)
     app.include_router(client_squad_knowledge_router.router)
+    app.include_router(client_stacks_router.router)
     app.include_router(client_users_router.router)
     app.include_router(client_credentials_router.router)
     app.include_router(client_github_router.router)

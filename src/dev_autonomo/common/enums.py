@@ -166,6 +166,19 @@ class AuditDecision(StrEnum):
     REJECTED_MULTI = "rejected_multi"
 
 
+class StackStatus(StrEnum):
+    """Estado de uma Stack persistida na squad (entidade do redesign).
+
+    DETECTED: descoberta pelo onboarding_analyzer.
+    MANUAL:   criada manualmente pelo cliente (ex: pra area que ainda
+              nao existe no codigo — "vou comecar app mobile").
+    ARCHIVED: removida logicamente (mantida pra historico mas nao usada).
+    """
+    DETECTED = "detected"
+    MANUAL = "manual"
+    ARCHIVED = "archived"
+
+
 class DreamJobStatus(StrEnum):
     """Estado de um job de consolidação Dreaming (Bloco H).
 
