@@ -68,7 +68,12 @@ class Task(Base, TimestampMixin):
     # span.outcome_evaluation_*. SKIPPED quando task rodou sem outcome
     # definido (legado ou opt-out).
     outcome_status: Mapped[OutcomeStatus] = mapped_column(
-        Enum(OutcomeStatus, name="outcome_status_enum", create_type=False),
+        Enum(
+            OutcomeStatus,
+            name="outcome_status_enum",
+            create_type=False,
+            values_callable=lambda e: [m.value for m in e],
+        ),
         default=OutcomeStatus.SKIPPED,
         nullable=False,
     )

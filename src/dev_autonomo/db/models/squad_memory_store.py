@@ -43,7 +43,13 @@ class SquadMemoryStore(Base, TimestampMixin):
     )
     anthropic_store_id: Mapped[str] = mapped_column(String(64), nullable=False)
     kind: Mapped[MemoryStoreKind] = mapped_column(
-        Enum(MemoryStoreKind, name="memory_store_kind_enum"), nullable=False
+        Enum(
+            MemoryStoreKind,
+            name="memory_store_kind_enum",
+            create_type=False,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        nullable=False,
     )
     description: Mapped[str | None] = mapped_column(String(1024))
     last_dream_id: Mapped[str | None] = mapped_column(String(64))
