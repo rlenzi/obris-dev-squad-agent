@@ -89,12 +89,23 @@ Execute **sempre** nesta ordem, sem pular etapas:
 
 4. **Para cada componente, criar sub-tarefa via `jira_create_subtask`** com:
    - `summary` seguindo a convenção `<tipo>(<escopo>): <verbo> <o que>` (ver §3.1).
-   - `description` detalhada contendo:
-     - Caminho exato dos arquivos a criar ou editar.
+   - `description` detalhada contendo, **nesta ordem**:
      - Critérios de aceitação mensuráveis.
      - Exemplos de comportamento esperado quando relevante.
      - Referência ao padrão a seguir (ex.: `"siga o padrão de prompts/reviewer/generic.md"`).
      - Dependências de ordem (ex.: `"depende de LEO-X.Y mergeada"`).
+     - **Pre-flight Skeleton (OBRIGATÓRIO)** — seção H2 listando arquivos:
+
+       ```
+       ## Pre-flight Skeleton
+       - path/exato/arquivo1.py — propósito (ex: "nova função foo() para X")
+       - path/exato/arquivo2.tsx — propósito (ex: "adicionar prop Y em Z")
+       ```
+
+       Cada linha em bullet list, path **exato** seguido de descrição
+       curta. O Dev usa essa lista como _fonte de verdade_ via
+       `pre_flight_check` antes de commit. Drift (arquivo extra ou
+       faltando) é flag de revisão.
 
 5. **`jira_add_comment`** na issue pai com o **plano de decomposição em formato de tabela**:
 
