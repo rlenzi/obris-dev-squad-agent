@@ -718,3 +718,140 @@ export async function deleteSquadKnowledgeSource(
     headers: { 'X-Client-Id': clientId },
   });
 }
+
+// =============================================================================
+// Onboarding analysis + skill proposer (Bloco E)
+// =============================================================================
+
+export type OnboardingStatus =
+  | 'not_started' | 'pending' | 'extracting' | 'analyzing'
+  | 'proposing' | 'completed' | 'failed';
+
+export interface OnboardingStatusResponse {
+  task_id: string | null;
+  status: OnboardingStatus;
+  current_step: string;
+  progress_pct: number;
+  manifest_ready_at: string | null;
+  error_message: string | null;
+}
+
+export interface SkillTemplateDraft {
+  slug: string;
+  name: string;
+  description: string;
+  tier: 'ba' | 'architect' | 'dev' | 'onboarding_analyst' | 'reviewer';
+  model_alias: string;
+  system_prompt: string;
+  tools_enabled: any[];
+  stack_primary: Record<string, any>;
+  stack_secondary: any[];
+  knowledge_partitions: any[];
+  template_variables: Record<string, any>;
+  parent_stack_profile_id: string;
+}
+
+export interface ProposeSkillsResponse {
+  drafts: SkillTemplateDraft[];
+  api_call_cost_usd: string;
+  input_tokens: number;
+  output_tokens: number;
+}
+
+export interface ManifestRepo {
+  name: string;
+  primary_language: string;
+  framework: string;
+  stack_secondary?: string[];
+  package_manager?: string;
+  test_runner?: string | null;
+  lint?: string | null;
+  build_command?: string | null;
+  test_command?: string | null;
+  lint_command?: string | null;
+  entry_points?: string[];
+  key_directories?: string[];
+}
+
+export interface RecommendedAgent {
+  role: string;
+  skill_template_slug: string;
+  rationale?: string;
+}
+
+export interface OnboardingManifest {
+  schema_version?: string;
+  detected_at?: string;
+  repos: ManifestRepo[];
+  recommended_agents?: RecommendedAgent[];
+  human_questions?: string[];
+}
+
+export async function runOnboardingAnalysis(
+  clientId: string,
+  squadId: string,
+  repoUrls: string[],
+): Promise<{ task_id: string; status: 'started' | 'already_running' }> {
+  const { data } = await api.post(
+    `/client/squads/${squadId}/run-onboarding-analysis`,
+    { repo_urls: repoUrls },
+    { headers: { 'X-Client-Id': clientId } },
+  );
+  return data;
+}
+
+export async function getOnboardingStatus(
+  clientId: string,
+  squadId: string,
+): Promise<OnboardingStatusResponse> {
+  const { data } = await api.get<OnboardingStatusResponse>(
+    `/client/squads/${squadId}/onboarding-status`,
+    { headers: { 'X-Client-Id': clientId } },
+  );
+  return data;
+}
+
+export async function getOnboardingManifest(
+  clientId: string,
+  squadId: string,
+): Promise<OnboardingManifest> {
+  const { data } = await api.get(
+    `/client/squads/${squadId}/onboarding-manifest`,
+    { headers: { 'X-Client-Id': clientId } },
+  );
+  return data.raw as OnboardingManifest;
+}
+
+export async function proposeSkills(
+  clientId: string,
+  squadId: string,
+  manifest: OnboardingManifest,
+  stackSlugs: string[],
+): Promise<ProposeSkillsResponse> {
+  const { data } = await api.post<ProposeSkillsResponse>(
+    `/client/squads/${squadId}/propose-skills`,
+    { manifest, stack_slugs: stackSlugs },
+    { headers: { 'X-Client-Id': clientId } },
+  );
+  return data;
+}
+
+export interface FinalizeSkillEntry {
+  catalog_skill_slug?: string | null;
+  draft_to_materialize?: SkillTemplateDraft | null;
+  instance_name?: string;
+  domain_business?: string;
+}
+
+export async function finalizeSetup(
+  clientId: string,
+  squadId: string,
+  entries: FinalizeSkillEntry[],
+): Promise<{ agent_instance_ids: string[]; created_skill_ids: string[] }> {
+  const { data } = await api.post(
+    `/client/squads/${squadId}/finalize-setup`,
+    { skills: entries },
+    { headers: { 'X-Client-Id': clientId } },
+  );
+  return data;
+}

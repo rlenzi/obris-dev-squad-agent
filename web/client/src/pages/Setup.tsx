@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -9,22 +9,21 @@ import {
   Flame,
   GitBranch,
   KeyRound,
-  Sparkles,
 } from 'lucide-react';
 import { useClientId } from '@/lib/use-client-id';
 import { useAuth } from '@/lib/auth';
 import {
-  createAgent,
   createCredential,
   createSquad,
   fetchSkillTemplates,
+  finalizeSetup,
   updateManifest,
-  type AgentInstanceCreate,
   type CredentialKind,
+  type FinalizeSkillEntry,
   type ManifestContent,
-  type SkillTemplate,
   type SquadCreate,
 } from '@/lib/api';
+import OnboardingFlow from '@/components/OnboardingFlow';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,7 +31,6 @@ import { Badge } from '@/components/ui/badge';
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
@@ -55,12 +53,7 @@ interface ManifestForm {
   jira_projects: string;
 }
 
-interface AgentDraft {
-  templateId: string;
-  name: string;
-}
-
-const STEPS = ['Boas-vindas', 'Credenciais', 'Squad', 'Manifesto', 'Agentes', 'Revisão'] as const;
+const STEPS = ['Boas-vindas', 'Credenciais', 'Squad', 'Manifesto', 'Análise & Agentes', 'Revisão'] as const;
 
 export default function SetupPage() {
   const clientId = useClientId();
@@ -88,32 +81,42 @@ export default function SetupPage() {
     jira_projects: '',
   });
 
-  const [agents, setAgents] = useState<AgentDraft[]>([]);
+  const [createdSquadId, setCreatedSquadId] = useState<string | null>(null);
+  const [finalizeEntries, setFinalizeEntries] = useState<FinalizeSkillEntry[]>([]);
 
   const tplQuery = useQuery({
     queryKey: ['skill-templates'],
     queryFn: fetchSkillTemplates,
   });
 
-  const setupMutation = useMutation({
+  // Resolve slugs do catálogo pra passar ao OnboardingFlow.
+  const catalogSlugs = useMemo(() => {
+    const tpls = tplQuery.data ?? [];
+    return {
+      ba: tpls.find((t) => t.tier === 'ba')?.slug ?? 'ba-generic-v1',
+      architect: tpls.find((t) => t.tier === 'architect')?.slug ?? 'architect-generic-v1',
+      reviewer: tpls.find((t) => t.tier === 'reviewer')?.slug ?? 'reviewer-generic-v1',
+    };
+  }, [tplQuery.data]);
+
+  // Mutation auxiliar: cria credenciais + squad + manifesto. Chamada ao
+  // avançar do passo 3 → 4 (a primeira vez), pra que OnboardingFlow tenha
+  // squad_id disponível. Idempotente — se já criou, reusa createdSquadId.
+  const createSquadAndManifest = useMutation({
     mutationFn: async () => {
-      // 1. Credenciais (opcional, mas o esperado)
+      if (createdSquadId) return createdSquadId;
       if (creds.github_token.trim()) {
         await createCredential(clientId, {
-          kind: 'github_token' as CredentialKind,
-          name: 'main',
+          kind: 'github_token' as CredentialKind, name: 'main',
           value: creds.github_token.trim(),
         });
       }
       if (creds.jira_token.trim()) {
         await createCredential(clientId, {
-          kind: 'jira_token' as CredentialKind,
-          name: 'main',
+          kind: 'jira_token' as CredentialKind, name: 'main',
           value: creds.jira_token.trim(),
         });
       }
-
-      // 2. Squad
       const payloadSquad: SquadCreate = {
         slug: squad.slug,
         name: squad.name,
@@ -121,30 +124,30 @@ export default function SetupPage() {
         description: squad.description || undefined,
       };
       const created = await createSquad(clientId, payloadSquad);
-
-      // 3. Manifesto
       const content: ManifestContent = {
         owns: {
           repos: manifest.repos.split(/\s*[\n,]\s*/).map((s) => s.trim()).filter(Boolean),
           jira_projects: manifest.jira_projects
-            .split(/\s*[\n,]\s*/)
-            .map((s) => s.trim())
-            .filter(Boolean),
+            .split(/\s*[\n,]\s*/).map((s) => s.trim()).filter(Boolean),
         },
       };
       await updateManifest(clientId, created.id, content);
+      setCreatedSquadId(created.id);
+      return created.id;
+    },
+    onError: (err: unknown) => {
+      setError(formatApiError(err, 'Falha criando squad/manifesto'));
+    },
+  });
 
-      // 4. Agentes
-      for (const draft of agents) {
-        if (!draft.templateId || !draft.name.trim()) continue;
-        const payload: AgentInstanceCreate = {
-          skill_template_id: draft.templateId,
-          name: draft.name.trim(),
-        };
-        await createAgent(clientId, created.id, payload);
+  const setupMutation = useMutation({
+    mutationFn: async () => {
+      if (!createdSquadId) {
+        throw new Error('Squad ainda não criada — volte ao passo Manifesto.');
       }
-
-      return created;
+      // Cria skills (gerados) + AgentInstances de uma vez.
+      await finalizeSetup(clientId, createdSquadId, finalizeEntries);
+      return { id: createdSquadId };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['squads', clientId] });
@@ -169,14 +172,24 @@ export default function SetupPage() {
       return true;
     }
     if (step === 4) {
-      return agents.every((d) => d.templateId && d.name.trim());
+      // Avanca quando OnboardingFlow ja chamou onConfirm.
+      return finalizeEntries.length > 0;
     }
     return true;
   }
 
-  function handleNext(event: FormEvent) {
+  async function handleNext(event: FormEvent) {
     event.preventDefault();
     setError(null);
+    // Ao sair do passo 3 (Manifesto) pra 4 (Análise), criamos squad+manifest
+    // pra que OnboardingFlow tenha squad_id pra disparar OA.
+    if (step === 3 && !createdSquadId) {
+      try {
+        await createSquadAndManifest.mutateAsync();
+      } catch {
+        return; // erro ja seteado em onError
+      }
+    }
     if (step < STEPS.length - 1) {
       setStep(step + 1);
     } else {
@@ -211,21 +224,33 @@ export default function SetupPage() {
             {step === 1 && <StepCreds form={creds} setForm={setCreds} />}
             {step === 2 && <StepSquad form={squad} setForm={setSquad} />}
             {step === 3 && <StepManifest form={manifest} setForm={setManifest} />}
-            {step === 4 && (
-              <StepAgents
-                drafts={agents}
-                setDrafts={setAgents}
-                templates={tplQuery.data ?? []}
-                isLoading={tplQuery.isLoading}
+            {step === 4 && createdSquadId && (
+              <OnboardingFlow
+                clientId={clientId}
+                squadId={createdSquadId}
+                repoUrls={manifest.repos
+                  .split(/\s*[\n,]\s*/)
+                  .map((s) => s.trim())
+                  .filter(Boolean)}
+                catalogSkillSlugs={catalogSlugs}
+                onConfirm={(entries) => {
+                  setFinalizeEntries(entries);
+                }}
+                onBack={() => setStep(3)}
               />
             )}
+            {step === 4 && !createdSquadId && (
+              <div className="space-y-2">
+                <p className="text-sm">Criando squad e manifesto…</p>
+                {createSquadAndManifest.isPending && <p className="text-xs text-muted-foreground">Aguarde…</p>}
+              </div>
+            )}
             {step === 5 && (
-              <StepReview
+              <StepReviewWithEntries
                 creds={creds}
                 squad={squad}
                 manifest={manifest}
-                agents={agents}
-                templates={tplQuery.data ?? []}
+                entries={finalizeEntries}
               />
             )}
 
@@ -498,110 +523,40 @@ function StepManifest({
   );
 }
 
-function StepAgents({
-  drafts,
-  setDrafts,
-  templates,
-  isLoading,
+// (StepAgents e StepReview legados removidos no Bloco E — substituidos
+// por OnboardingFlow + StepReviewWithEntries)
+
+
+function Row({
+  label,
+  value,
+  mono,
 }: {
-  drafts: AgentDraft[];
-  setDrafts: (d: AgentDraft[]) => void;
-  templates: SkillTemplate[];
-  isLoading: boolean;
+  label: string;
+  value: string;
+  mono?: boolean;
 }) {
-  function addDraft() {
-    setDrafts([...drafts, { templateId: '', name: '' }]);
-  }
-
-  function updateDraft(idx: number, patch: Partial<AgentDraft>) {
-    const copy = [...drafts];
-    copy[idx] = { ...copy[idx], ...patch };
-    setDrafts(copy);
-  }
-
-  function removeDraft(idx: number) {
-    setDrafts(drafts.filter((_, i) => i !== idx));
-  }
-
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Sparkles className="size-5 text-brand-500" />
-        <h2 className="text-lg font-semibold">Primeiros agentes</h2>
-      </div>
-      <p className="text-sm text-muted-foreground">
-        Escolha quem vai trabalhar nessa squad. Você pode adicionar/remover
-        depois.
-      </p>
-
-      {isLoading && (
-        <p className="text-sm text-muted-foreground">Carregando skills…</p>
-      )}
-
-      {drafts.length === 0 && !isLoading && (
-        <div className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
-          Nenhum agente — adicione pelo menos um.
-        </div>
-      )}
-
-      <div className="space-y-2">
-        {drafts.map((d, idx) => (
-          <div
-            key={idx}
-            className="grid grid-cols-1 gap-2 rounded-md border bg-muted/30 p-3 sm:grid-cols-[1fr_1fr_auto]"
-          >
-            <select
-              value={d.templateId}
-              onChange={(e) => updateDraft(idx, { templateId: e.target.value })}
-              className="rounded-md border bg-background px-2 py-1.5 text-sm"
-              required
-            >
-              <option value="">— escolha skill —</option>
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.tier.toUpperCase()} · {t.name}
-                </option>
-              ))}
-            </select>
-            <Input
-              value={d.name}
-              onChange={(e) => updateDraft(idx, { name: e.target.value })}
-              placeholder="Nome (ex: Dev Backend Plataforma)"
-              required
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => removeDraft(idx)}
-            >
-              Remover
-            </Button>
-          </div>
-        ))}
-      </div>
-
-      <Button type="button" variant="outline" size="sm" onClick={addDraft}>
-        <Bot className="size-4" /> Adicionar agente
-      </Button>
+    <div className="flex justify-between gap-3">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={cn('truncate text-right', mono && 'font-mono')}>
+        {value}
+      </span>
     </div>
   );
 }
 
-function StepReview({
+function StepReviewWithEntries({
   creds,
   squad,
   manifest,
-  agents,
-  templates,
+  entries,
 }: {
   creds: CredsForm;
   squad: SquadForm;
   manifest: ManifestForm;
-  agents: AgentDraft[];
-  templates: SkillTemplate[];
+  entries: FinalizeSkillEntry[];
 }) {
-  const tplById = new Map(templates.map((t) => [t.id, t]));
   return (
     <div className="space-y-3 text-sm">
       <Card>
@@ -611,18 +566,12 @@ function StepReview({
         <CardContent className="space-y-1 py-3">
           <Row
             label="GitHub token"
-            value={creds.github_token ? '••• preenchido' : 'vazio'}
+            value={creds.github_token ? '••• preenchido' : 'vazio (configurar depois)'}
           />
           <Row
             label="Jira token"
-            value={creds.jira_token ? '••• preenchido' : 'vazio'}
+            value={creds.jira_token ? '••• preenchido' : 'vazio (configurar depois)'}
           />
-          {(!creds.github_token || !creds.jira_token) && (
-            <CardDescription className="mt-2">
-              Você pode preencher depois em Credenciais. Sem GitHub, agente Dev
-              não consegue abrir PR; sem Jira, BA/Architect não leem issues.
-            </CardDescription>
-          )}
         </CardContent>
       </Card>
 
@@ -642,71 +591,37 @@ function StepReview({
           <CardTitle className="text-base">Manifesto</CardTitle>
         </CardHeader>
         <CardContent className="space-y-1 py-3">
-          <Row
-            label="Repositórios"
-            value={
-              manifest.repos
-                .split(/\s*[\n,]\s*/)
-                .filter((s) => s.trim())
-                .length + ' repos'
-            }
-          />
-          <Row
-            label="Projetos Jira"
-            value={
-              manifest.jira_projects
-                .split(/\s*[\n,]\s*/)
-                .filter((s) => s.trim())
-                .join(', ') || '(nenhum)'
-            }
-          />
+          <Row label="Repos" value={manifest.repos || '(vazio)'} />
+          <Row label="Jira projects" value={manifest.jira_projects || '(vazio)'} />
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="py-3">
-          <CardTitle className="text-base">Agentes a provisionar</CardTitle>
+          <CardTitle className="text-base">Agentes ({entries.length})</CardTitle>
         </CardHeader>
         <CardContent className="space-y-1 py-3">
-          {agents.length === 0 && (
+          {entries.length === 0 ? (
             <p className="text-xs italic text-muted-foreground">
-              Nenhum agente — você pode adicionar pelo painel da squad depois.
+              Nenhum agente selecionado.
             </p>
-          )}
-          {agents.map((a, i) => {
-            const tpl = tplById.get(a.templateId);
-            return (
+          ) : (
+            entries.map((e, i) => (
               <div key={i} className="flex items-center justify-between gap-2">
-                <span>{a.name || '(sem nome)'}</span>
-                {tpl && (
-                  <Badge variant="outline" className="text-[10px]">
-                    {tpl.tier.toUpperCase()}
-                  </Badge>
+                <span className="flex items-center gap-2">
+                  <Bot className="size-4 text-muted-foreground" />
+                  {e.instance_name}
+                </span>
+                {e.draft_to_materialize ? (
+                  <Badge variant="warning" className="text-[10px]">NOVO</Badge>
+                ) : (
+                  <Badge variant="secondary" className="text-[10px]">CATÁLOGO</Badge>
                 )}
               </div>
-            );
-          })}
+            ))
+          )}
         </CardContent>
       </Card>
-    </div>
-  );
-}
-
-function Row({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="flex justify-between gap-3">
-      <span className="text-muted-foreground">{label}</span>
-      <span className={cn('truncate text-right', mono && 'font-mono')}>
-        {value}
-      </span>
     </div>
   );
 }
