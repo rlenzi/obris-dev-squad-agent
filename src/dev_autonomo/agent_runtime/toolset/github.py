@@ -15,6 +15,8 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
+from sqlalchemy import select
+
 from dev_autonomo.agent_runtime.context import AgentRunContext
 from dev_autonomo.agent_runtime.toolset.base import ToolResult
 from dev_autonomo.common.credentials_store import (
@@ -202,6 +204,20 @@ class GitHubCreatePRTool:
                 f"github API falhou: {exc}", code="github_error"
             )
 
+        # Persiste a URL do PR na Task pra link direto no admin/cliente.
+        # Sem isso, painel só consegue mostrar busca "/pulls?q=is:pr+LEO-N".
+        if ctx.task_id is not None:
+            from dev_autonomo.db.models.task import Task as _Task
+
+            task = (
+                await ctx.session.execute(
+                    select(_Task).where(_Task.id == ctx.task_id)
+                )
+            ).scalar_one_or_none()
+            if task is not None:
+                task.pr_url = pr.html_url
+                await ctx.session.commit()
+
         return ToolResult.ok(
             {
                 "pr_number": pr.number,
@@ -284,6 +300,82 @@ class GitHubGetPRTool:
                 "repo": repo_name,
                 **pr_data,
                 "files": files,
+            }
+        )
+
+
+@dataclass
+class GitHubGetPRChecksTool:
+    """Lê o status agregado dos checks do CI no PR.
+
+    O Reviewer usa essa tool ANTES de aprovar — se o CI está failing,
+    bloqueia (REQUEST_CHANGES). Combina GitHub Actions check-runs + legacy
+    status API.
+    """
+
+    name: str = "github_get_pr_checks"
+    description: str = (
+        "Le o status dos checks do CI (GitHub Actions) num PR. Retorna estado "
+        "agregado (success/failure/pending/neutral) + lista de checks com "
+        "nome, status, conclusao e URL. Use ANTES de aprovar uma review — "
+        "se CI esta falhando, peca REQUEST_CHANGES."
+    )
+    input_schema: dict[str, Any] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        self.input_schema = {
+            "type": "object",
+            "properties": {
+                "pr_number": {
+                    "type": "integer",
+                    "description": "Numero do PR a consultar.",
+                },
+            },
+            "required": ["pr_number"],
+        }
+
+    async def execute(self, ctx: AgentRunContext, inputs: dict[str, Any]) -> ToolResult:
+        if not ctx.workspace_repo:
+            return ToolResult.error(
+                "workspace_repo ausente no contexto", code="no_workspace"
+            )
+
+        try:
+            owner, repo_name = _extract_owner_repo(ctx.workspace_repo)
+        except ValueError as exc:
+            return ToolResult.error(f"URL invalido: {exc}", code="bad_repo_url")
+
+        authz = await ctx.enforcer.check_repo(ctx.workspace_repo)
+        if not authz.allowed:
+            return ToolResult.error(
+                authz.suggestion or "repo nao autorizado pelo manifest",
+                code=authz.reason,
+            )
+
+        try:
+            token = await get_secret(
+                ctx.session,
+                client_id=ctx.client_id,
+                kind=SecretKind.GITHUB_TOKEN,
+            )
+        except CredentialNotFoundError as exc:
+            return ToolResult.error(str(exc), code="credential_missing")
+
+        await ctx.session.commit()
+
+        pr_number: int = int(inputs["pr_number"])
+        client = GitHubClient(token=token)
+        try:
+            data = await client.get_pull_request_checks(owner, repo_name, pr_number)
+        except Exception as exc:
+            return ToolResult.error(
+                f"github API falhou: {exc}", code="github_error"
+            )
+
+        return ToolResult.ok(
+            {
+                "pr_number": pr_number,
+                **data,
             }
         )
 

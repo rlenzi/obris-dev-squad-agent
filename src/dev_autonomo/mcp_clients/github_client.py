@@ -84,6 +84,83 @@ class GitHubClient:
                 raw=data,
             )
 
+    async def get_pull_request_checks(
+        self, owner: str, repo: str, number: int
+    ) -> dict[str, Any]:
+        """Retorna status agregado dos checks do PR (GitHub Actions + status checks).
+
+        Resposta combina dois endpoints da GitHub API:
+        - GET /repos/{owner}/{repo}/commits/{sha}/check-runs (Actions)
+        - GET /repos/{owner}/{repo}/commits/{sha}/status (legacy status API)
+
+        Returns:
+            Dict com:
+              state: 'success' | 'failure' | 'pending' | 'neutral'
+              total_count: int
+              checks: list of {name, status, conclusion, html_url, started_at, completed_at}
+        """
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+            # 1. Busca o SHA do head do PR
+            pr_resp = await client.get(
+                f"{GITHUB_API}/repos/{owner}/{repo}/pulls/{number}",
+                headers=self._headers,
+            )
+            pr_resp.raise_for_status()
+            head_sha = pr_resp.json()["head"]["sha"]
+
+            # 2. Check runs (GitHub Actions)
+            cr_resp = await client.get(
+                f"{GITHUB_API}/repos/{owner}/{repo}/commits/{head_sha}/check-runs",
+                headers=self._headers,
+            )
+            cr_resp.raise_for_status()
+            check_runs = cr_resp.json().get("check_runs", [])
+
+            # 3. Status (legacy / external CI integrations)
+            st_resp = await client.get(
+                f"{GITHUB_API}/repos/{owner}/{repo}/commits/{head_sha}/status",
+                headers=self._headers,
+            )
+            st_resp.raise_for_status()
+            status_data = st_resp.json()
+
+            checks_compact = [
+                {
+                    "name": cr.get("name"),
+                    "status": cr.get("status"),  # queued | in_progress | completed
+                    "conclusion": cr.get("conclusion"),  # success | failure | etc
+                    "html_url": cr.get("html_url"),
+                    "started_at": cr.get("started_at"),
+                    "completed_at": cr.get("completed_at"),
+                }
+                for cr in check_runs
+            ]
+
+            # Calcula estado agregado
+            if not check_runs and not status_data.get("statuses"):
+                state = "neutral"  # sem CI configurado
+            elif any(c["conclusion"] == "failure" for c in checks_compact):
+                state = "failure"
+            elif any(
+                c["status"] in ("queued", "in_progress") for c in checks_compact
+            ):
+                state = "pending"
+            elif all(
+                c["conclusion"] in ("success", "skipped", "neutral")
+                for c in checks_compact
+            ):
+                state = "success"
+            else:
+                state = status_data.get("state", "neutral")
+
+            return {
+                "head_sha": head_sha,
+                "state": state,
+                "total_count": len(check_runs),
+                "checks": checks_compact,
+                "legacy_status": status_data.get("state"),
+            }
+
     async def merge_pull_request(
         self,
         owner: str,

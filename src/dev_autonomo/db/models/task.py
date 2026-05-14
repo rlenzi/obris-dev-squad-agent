@@ -55,6 +55,10 @@ class Task(Base, TimestampMixin):
 
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # URL do PR no GitHub criado por esta task (preenchido pelo agente
+    # quando chama github_create_pr). Link direto em vez de search.
+    pr_url: Mapped[str | None] = mapped_column(String(512))
+
     parent: Mapped["Task | None"] = relationship(
         "Task",
         remote_side="Task.id",
