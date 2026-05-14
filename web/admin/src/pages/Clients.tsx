@@ -1,16 +1,9 @@
-import { useState, type FormEvent } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Building2, Plus } from 'lucide-react';
-import {
-  createClient,
-  fetchClients,
-  fetchCostByClient,
-  type ClientCreate,
-} from '@/lib/api';
+import { fetchClients, fetchCostByClient } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import {
   Card,
@@ -19,15 +12,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+import { Dialog, DialogTrigger } from '@/components/ui/dialog';
+import NewClientWizard from '@/components/NewClientWizard';
 import { formatBRL, formatUSD } from '@/lib/utils';
 
 export default function ClientsPage() {
@@ -55,7 +41,7 @@ export default function ClientsPage() {
               <Plus className="size-4" /> Novo cliente
             </Button>
           </DialogTrigger>
-          {openCreate && <CreateClientDialog onSuccess={() => setOpenCreate(false)} />}
+          {openCreate && <NewClientWizard onSuccess={() => setOpenCreate(false)} />}
         </Dialog>
       </div>
 
@@ -154,99 +140,3 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant="outline">{status}</Badge>;
 }
 
-function CreateClientDialog({ onSuccess }: { onSuccess: () => void }) {
-  const queryClient = useQueryClient();
-  const [slug, setSlug] = useState('');
-  const [name, setName] = useState('');
-  const [jiraUrl, setJiraUrl] = useState('');
-  const [jiraEmail, setJiraEmail] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
-  const mutation = useMutation({
-    mutationFn: (payload: ClientCreate) => createClient(payload),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients'] });
-      queryClient.invalidateQueries({ queryKey: ['cost-by-client'] });
-      onSuccess();
-    },
-    onError: (err: any) => {
-      setError(err?.response?.data?.detail ?? 'Falha ao criar cliente');
-    },
-  });
-
-  function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setError(null);
-    mutation.mutate({
-      slug,
-      name,
-      jira_workspace_url: jiraUrl || undefined,
-      jira_email: jiraEmail || undefined,
-    });
-  }
-
-  return (
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Novo cliente</DialogTitle>
-        <DialogDescription>
-          Cria o tenant e um billing plan inicial com 20% de overhead e câmbio
-          R$ 5/USD. Você ajusta depois.
-        </DialogDescription>
-      </DialogHeader>
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="slug">Slug *</Label>
-          <Input
-            id="slug"
-            value={slug}
-            onChange={(e) =>
-              setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))
-            }
-            placeholder="acme-corp"
-            required
-            pattern="^[a-z0-9][a-z0-9-]*$"
-          />
-          <p className="text-xs text-muted-foreground">
-            Identificador único (a-z, 0-9, hífen). Não muda depois.
-          </p>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="name">Nome *</Label>
-          <Input
-            id="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="ACME Corporation"
-            required
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="jiraUrl">Jira workspace URL</Label>
-          <Input
-            id="jiraUrl"
-            value={jiraUrl}
-            onChange={(e) => setJiraUrl(e.target.value)}
-            placeholder="https://acme.atlassian.net"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="jiraEmail">Jira email</Label>
-          <Input
-            id="jiraEmail"
-            type="email"
-            value={jiraEmail}
-            onChange={(e) => setJiraEmail(e.target.value)}
-            placeholder="admin@acme.com"
-          />
-        </div>
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        <DialogFooter>
-          <Button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? 'Criando…' : 'Criar cliente'}
-          </Button>
-        </DialogFooter>
-      </form>
-    </DialogContent>
-  );
-}
