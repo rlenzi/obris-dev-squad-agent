@@ -151,9 +151,14 @@ async def get_agent_run_detail(
     jira_issue_url = _build_jira_issue_url(
         client, task.jira_issue_key if task else None
     )
-    pr_search_url = _build_pr_search_url(
-        repo_url, task.jira_issue_key if task else None
-    )
+    # Preferência: pr_url direto (gravado quando github_create_pr foi chamado).
+    # Fallback: search URL (busca por menção da key no title/body).
+    if task is not None and task.pr_url:
+        pr_search_url = task.pr_url
+    else:
+        pr_search_url = _build_pr_search_url(
+            repo_url, task.jira_issue_key if task else None
+        )
 
     calls = [
         ExternalCallItem(

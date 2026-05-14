@@ -42,6 +42,11 @@ class AgentInstance(Base, TimestampMixin):
     config_overrides: Mapped[dict] = mapped_column(JSONB, default=dict)
     last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Fase 2: flag que indica se este agente tem notebook pessoal Docker.
+    # Quando True, plataforma provisiona container isolado por run. Default
+    # False = comportamento atual (sem isolamento de container).
+    has_personal_notebook: Mapped[bool] = mapped_column(default=False, nullable=False)
+
     squad: Mapped["Squad"] = relationship(back_populates="agents", foreign_keys=[squad_id])
     skill_template: Mapped["SkillTemplate"] = relationship(back_populates="instances")
 

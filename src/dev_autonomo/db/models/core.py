@@ -44,6 +44,19 @@ class Client(Base, TimestampMixin):
 
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Fase 2: provider de cloud escolhido pelo cliente (aws/gcp/azure/ssh).
+    # Vazio enquanto cliente não configurou.
+    cloud_provider: Mapped[str | None] = mapped_column(String(32))
+    cloud_credentials_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey(
+            "encrypted_secrets.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_clients_cloud_credentials_id_encrypted_secrets",
+        ),
+    )
+
     squads: Mapped[list["Squad"]] = relationship(back_populates="client", cascade="all, delete-orphan")
     memberships: Mapped[list["ClientMembership"]] = relationship(
         back_populates="client", cascade="all, delete-orphan"
