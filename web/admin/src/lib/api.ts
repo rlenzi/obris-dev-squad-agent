@@ -373,6 +373,8 @@ export interface SkillTemplate {
   tools_enabled: any[];
   knowledge_partitions: any[];
   active: boolean;
+  /** ID do agent provisionado na Anthropic Managed Agents (null se ainda não criado). */
+  anthropic_agent_id: string | null;
 }
 
 export interface AgentInstance {

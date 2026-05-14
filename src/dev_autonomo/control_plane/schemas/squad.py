@@ -92,6 +92,9 @@ class SkillTemplatePublic(BaseModel):
     tools_enabled: list[Any]
     knowledge_partitions: list[Any]
     active: bool
+    # Anthropic Managed Agents: agent_id provisionado na cloud quando
+    # este skill template eh usado pela primeira vez. None ate primeiro run.
+    anthropic_agent_id: str | None = None
 
 
 # ---- AgentInstance ----
