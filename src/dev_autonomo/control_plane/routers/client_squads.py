@@ -26,6 +26,7 @@ from dev_autonomo.control_plane.schemas.squad import (
     AgentInstanceCreate,
     AgentInstancePublic,
     AgentInstanceUpdate,
+    AgentLastRunPublic,
     ManifestPublic,
     ManifestUpdate,
     SquadCreate,
@@ -38,6 +39,7 @@ from dev_autonomo.db.models import (
     Manifest,
     SkillTemplate,
     Squad,
+    Task,
     User,
 )
 
@@ -294,3 +296,65 @@ async def update_agent(
     await session.commit()
     await session.refresh(agent)
     return agent
+
+
+@router.get("/{squad_id}/agents/last-runs", response_model=list[AgentLastRunPublic])
+async def list_agents_last_run(
+    squad_id: UUID,
+    ctx: tuple[Client, UserRole] = Depends(require_client_context),
+    session: AsyncSession = Depends(get_session),
+) -> list[AgentLastRunPublic]:
+    """Retorna a última run (Task) de cada agente da squad.
+
+    Agentes sem nenhuma run retornam `last_run_status: null` e `last_run_at: null`.
+    A query usa subquery com MAX(updated_at) por assigned_agent_id para evitar N+1.
+    """
+    client, _ = ctx
+    await _get_squad_or_404(session, client.id, squad_id)
+
+    # Busca todos os agentes da squad
+    agents_stmt = (
+        select(AgentInstance)
+        .where(AgentInstance.squad_id == squad_id)
+        .order_by(AgentInstance.created_at.desc())
+    )
+    agents: list[AgentInstance] = (await session.execute(agents_stmt)).scalars().all()
+
+    if not agents:
+        return []
+
+    agent_ids = [a.id for a in agents]
+
+    # Subquery: para cada assigned_agent_id, encontra o updated_at máximo
+    latest_at_subq = (
+        select(
+            Task.assigned_agent_id,
+            Task.updated_at,
+            Task.status,
+        )
+        .where(Task.assigned_agent_id.in_(agent_ids))
+        .order_by(Task.assigned_agent_id, Task.updated_at.desc())
+        .distinct(Task.assigned_agent_id)
+        .subquery()
+    )
+
+    runs_stmt = select(
+        latest_at_subq.c.assigned_agent_id,
+        latest_at_subq.c.status,
+        latest_at_subq.c.updated_at,
+    )
+    rows = (await session.execute(runs_stmt)).all()
+
+    # Indexa por agent_id para merge eficiente
+    runs_by_agent: dict[Any, tuple[Any, Any]] = {
+        row.assigned_agent_id: (row.status, row.updated_at) for row in rows
+    }
+
+    return [
+        AgentLastRunPublic(
+            agent_id=agent.id,
+            last_run_status=runs_by_agent[agent.id][0] if agent.id in runs_by_agent else None,
+            last_run_at=runs_by_agent[agent.id][1] if agent.id in runs_by_agent else None,
+        )
+        for agent in agents
+    ]
