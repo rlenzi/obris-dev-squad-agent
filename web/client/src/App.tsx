@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/auth';
 import Layout from '@/components/Layout';
 import LoginPage from '@/pages/Login';
@@ -10,7 +11,9 @@ import AgentDetailPage from '@/pages/AgentDetail';
 import AgentRunDetailPage from '@/pages/AgentRunDetail';
 import CredentialsPage from '@/pages/Credentials';
 import CostPage from '@/pages/Cost';
+import SetupPage from '@/pages/Setup';
 import ComingSoonPage from '@/pages/ComingSoon';
+import { fetchSquadsForClient } from '@/lib/api';
 import { useClientId } from '@/lib/use-client-id';
 
 function CredentialsWithClient() {
@@ -30,7 +33,59 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
+  return <>{children}</>;
+}
+
+/**
+ * Envolve as rotas que precisam do tenant configurado. Se squad_count == 0,
+ * redireciona pra /setup. Senão renderiza dentro do Layout.
+ */
+function RequireSetupComplete({ children }: { children: ReactNode }) {
+  const clientId = useClientId();
+  const squadsQuery = useQuery({
+    queryKey: ['squads', clientId],
+    queryFn: () => fetchSquadsForClient(clientId),
+    enabled: Boolean(clientId),
+  });
+
+  if (squadsQuery.isLoading) {
+    return (
+      <div className="min-h-screen grid place-items-center text-muted-foreground">
+        Carregando tenant…
+      </div>
+    );
+  }
+  if ((squadsQuery.data ?? []).length === 0) {
+    return <Navigate to="/setup" replace />;
+  }
   return <Layout>{children}</Layout>;
+}
+
+/**
+ * Para a tela /setup: exige auth mas NÃO exige squad existente.
+ * Se já tem squad, redireciona pro dashboard pra evitar reentrar no wizard.
+ */
+function SetupGate({ children }: { children: ReactNode }) {
+  const clientId = useClientId();
+  const squadsQuery = useQuery({
+    queryKey: ['squads', clientId],
+    queryFn: () => fetchSquadsForClient(clientId),
+    enabled: Boolean(clientId),
+  });
+
+  if (squadsQuery.isLoading) {
+    return (
+      <div className="min-h-screen grid place-items-center text-muted-foreground">
+        Carregando tenant…
+      </div>
+    );
+  }
+  if ((squadsQuery.data ?? []).length > 0) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return (
+    <div className="min-h-screen bg-background px-4 py-10">{children}</div>
+  );
 }
 
 export default function App() {
@@ -38,10 +93,22 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
+        path="/setup"
+        element={
+          <ProtectedRoute>
+            <SetupGate>
+              <SetupPage />
+            </SetupGate>
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/dashboard"
         element={
           <ProtectedRoute>
-            <ClientDashboardPage />
+            <RequireSetupComplete>
+              <ClientDashboardPage />
+            </RequireSetupComplete>
           </ProtectedRoute>
         }
       />
@@ -49,7 +116,9 @@ export default function App() {
         path="/squads"
         element={
           <ProtectedRoute>
-            <SquadsListPage />
+            <RequireSetupComplete>
+              <SquadsListPage />
+            </RequireSetupComplete>
           </ProtectedRoute>
         }
       />
@@ -57,7 +126,9 @@ export default function App() {
         path="/squads/:squadId/agents/:agentId/runs/:taskId"
         element={
           <ProtectedRoute>
-            <AgentRunDetailPage />
+            <RequireSetupComplete>
+              <AgentRunDetailPage />
+            </RequireSetupComplete>
           </ProtectedRoute>
         }
       />
@@ -65,7 +136,9 @@ export default function App() {
         path="/squads/:squadId/agents/:agentId"
         element={
           <ProtectedRoute>
-            <AgentDetailPage />
+            <RequireSetupComplete>
+              <AgentDetailPage />
+            </RequireSetupComplete>
           </ProtectedRoute>
         }
       />
@@ -73,7 +146,9 @@ export default function App() {
         path="/squads/:squadId"
         element={
           <ProtectedRoute>
-            <SquadDetailPage />
+            <RequireSetupComplete>
+              <SquadDetailPage />
+            </RequireSetupComplete>
           </ProtectedRoute>
         }
       />
@@ -81,10 +156,12 @@ export default function App() {
         path="/agents"
         element={
           <ProtectedRoute>
-            <ComingSoonPage
-              title="Agentes (cross-squad)"
-              description="Visão consolidada de todos os agentes do tenant em todas as squads. Em construção."
-            />
+            <RequireSetupComplete>
+              <ComingSoonPage
+                title="Agentes (cross-squad)"
+                description="Visão consolidada de todos os agentes do tenant em todas as squads. Em construção."
+              />
+            </RequireSetupComplete>
           </ProtectedRoute>
         }
       />
@@ -92,7 +169,9 @@ export default function App() {
         path="/cost"
         element={
           <ProtectedRoute>
-            <CostPage />
+            <RequireSetupComplete>
+              <CostPage />
+            </RequireSetupComplete>
           </ProtectedRoute>
         }
       />
@@ -100,7 +179,9 @@ export default function App() {
         path="/credentials"
         element={
           <ProtectedRoute>
-            <CredentialsWithClient />
+            <RequireSetupComplete>
+              <CredentialsWithClient />
+            </RequireSetupComplete>
           </ProtectedRoute>
         }
       />
