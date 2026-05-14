@@ -41,10 +41,22 @@ class ExternalApiCall(Base):
     )
 
     provider: Mapped[ApiProvider] = mapped_column(
-        Enum(ApiProvider, name="api_provider_enum"), index=True
+        Enum(
+            ApiProvider,
+            name="api_provider_enum",
+            create_type=False,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        index=True,
     )
     kind: Mapped[ApiCallKind] = mapped_column(
-        Enum(ApiCallKind, name="api_call_kind_enum"), index=True
+        Enum(
+            ApiCallKind,
+            name="api_call_kind_enum",
+            create_type=False,
+            values_callable=lambda e: [m.value for m in e],
+        ),
+        index=True,
     )
     model: Mapped[str | None] = mapped_column(String(128))
 
