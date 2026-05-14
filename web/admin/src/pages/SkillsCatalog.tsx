@@ -129,9 +129,17 @@ export default function SkillsCatalogPage() {
                     {s.slug} (v{s.version})
                   </div>
                 </div>
-                <Badge variant="outline" className="shrink-0 text-[10px]">
-                  {s.tier.toUpperCase()}
-                </Badge>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <Badge variant="outline" className="text-[10px]">
+                    {s.tier.toUpperCase()}
+                  </Badge>
+                  {s.anthropic_agent_id && (
+                    <span
+                      className="size-2 rounded-full bg-green-500"
+                      title={`Managed agent provisionado: ${s.anthropic_agent_id}`}
+                    />
+                  )}
+                </div>
               </div>
             </button>
           ))}
@@ -179,7 +187,24 @@ function SkillDetail({ skill }: { skill: SkillTemplate }) {
             {skill.client_id === null && (
               <Badge variant="outline">System template</Badge>
             )}
+            {skill.anthropic_agent_id ? (
+              <Badge
+                variant="success"
+                title={`Provisionado na Anthropic Managed Agents (${skill.anthropic_agent_id})`}
+              >
+                Managed ✓
+              </Badge>
+            ) : (
+              <Badge variant="muted" title="Ainda não provisionado na Anthropic">
+                Não provisionado
+              </Badge>
+            )}
           </div>
+          {skill.anthropic_agent_id && (
+            <p className="font-mono text-xs text-muted-foreground">
+              agent_id: {skill.anthropic_agent_id}
+            </p>
+          )}
         </CardContent>
       </Card>
 
