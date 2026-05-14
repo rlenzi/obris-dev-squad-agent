@@ -6,6 +6,8 @@ Inclui todos os routers (auth, me, health, webhooks, futuros admin/client).
 from __future__ import annotations
 
 import logging
+from contextlib import asynccontextmanager
+from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,12 +30,21 @@ from dev_autonomo.control_plane.routers import skill_templates as skill_template
 logger = logging.getLogger(__name__)
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Gerencia o ciclo de vida do app: captura o instante de startup."""
+    health_router.set_startup_time()
+    logger.info("Backend startup registrado (uptime clock iniciado).")
+    yield
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title="dev-autonomo Control Plane",
         version="0.2.0",
         description="API multi-tenant que serve admin e client portals.",
+        lifespan=lifespan,
     )
 
     # CORS para os dois painéis (admin.* e app.*). Em dev, aceita localhost.
