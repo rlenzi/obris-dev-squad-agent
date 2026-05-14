@@ -438,6 +438,8 @@ export async function fetchSkillTemplate(id: string) {
 
 export type RunStatus = 'completed' | 'failed' | 'in_progress';
 
+export type OutcomeStatus = 'pending' | 'satisfied' | 'failed' | 'skipped';
+
 export interface AgentRunItem {
   task_id: string;
   jira_issue_key: string | null;
@@ -447,6 +449,8 @@ export interface AgentRunItem {
   started_at: string;
   ended_at: string | null;
   status: RunStatus;
+  outcome_status: OutcomeStatus;
+  outcome_iterations: number;
 }
 
 export interface AgentRunsPage {
@@ -535,6 +539,11 @@ export interface AgentRunDetail {
   total_cache_creation_tokens: number;
   total_cache_read_tokens: number;
   error_count: number;
+  /** Sessão Anthropic Managed Agents (T7). */
+  anthropic_session_id: string | null;
+  outcome_status: OutcomeStatus;
+  outcome_iterations: number;
+  outcome_rubric_ref: string | null;
   calls: ExternalCallItem[];
   calls_total: number;
   calls_offset: number;

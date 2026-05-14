@@ -23,6 +23,8 @@ class AgentRunItem(BaseModel):
     started_at: datetime          # MIN(occurred_at) do grupo
     ended_at: datetime | None = None            # MAX(occurred_at) do grupo
     status: Literal["completed", "failed", "in_progress"]
+    outcome_status: Literal["pending", "satisfied", "failed", "skipped"] = "skipped"
+    outcome_iterations: int = 0
 
 
 class AgentRunsPage(BaseModel):
@@ -86,6 +88,13 @@ class AgentRunDetail(BaseModel):
     total_cache_creation_tokens: int = 0
     total_cache_read_tokens: int = 0
     error_count: int = Field(ge=0, default=0)
+
+    # Managed Agents — sessao Anthropic e estado de outcome (T5+T7+T12).
+    anthropic_session_id: str | None = None
+    outcome_status: Literal["pending", "satisfied", "failed", "skipped"] = "skipped"
+    outcome_iterations: int = 0
+    outcome_rubric_ref: str | None = None
+
     calls: list[ExternalCallItem]
     calls_total: int = Field(ge=0)
     calls_offset: int = Field(ge=0)
