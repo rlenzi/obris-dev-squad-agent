@@ -16,6 +16,7 @@ from dev_autonomo.db.models.knowledge import (
 )
 from dev_autonomo.db.models.secret import EncryptedSecret
 from dev_autonomo.db.models.skill import SkillTemplate
+from dev_autonomo.db.models.rag_audit_log import RagAuditLog
 from dev_autonomo.db.models.rag_source import RagSource
 from dev_autonomo.db.models.squad import Manifest, Squad
 from dev_autonomo.db.models.squad_memory_store import SquadMemoryStore
@@ -36,6 +37,7 @@ __all__ = [
     "Manifest",
     "OnboardingRun",
     "PlaybookEntry",
+    "RagAuditLog",
     "RagSource",
     "SkillTemplate",
     "Squad",
