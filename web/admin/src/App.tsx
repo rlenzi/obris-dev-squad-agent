@@ -6,6 +6,7 @@ import LoginPage from '@/pages/Login';
 import DashboardPage from '@/pages/Dashboard';
 import ClientsPage from '@/pages/Clients';
 import ClientDetailPage from '@/pages/ClientDetail';
+import NewClientWizard from '@/components/NewClientWizard';
 import SquadDetailPage from '@/pages/SquadDetail';
 import AgentDetailPage from '@/pages/AgentDetail';
 import AgentRunDetailPage from '@/pages/AgentRunDetail';
@@ -44,6 +45,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <ClientsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/clients/new"
+        element={
+          <ProtectedRoute>
+            <NewClientWizard />
           </ProtectedRoute>
         }
       />
