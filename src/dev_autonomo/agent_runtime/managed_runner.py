@@ -284,11 +284,11 @@ def _stream_events(
     session_id: str,
     user_message: str,
     outcome: dict[str, Any] | None = None,
-) -> tuple[str, list[str], str | None, int]:
+) -> tuple[str, list[str], str | None, int, list[dict[str, Any]]]:
     """Envia user.message e processa stream ate session.status_idle.
 
-    Retorna (output_text, tool_names, outcome_verdict, outcome_iterations).
-    outcome_verdict e None se nenhum outcome foi definido.
+    Retorna (output_text, tool_names, outcome_verdict, outcome_iterations,
+    spawned_threads). Cada thread eh dict {agent_name, agent_id, thread_id}.
 
     Se ``outcome`` for fornecido, envia user.define_outcome ANTES do
     user.message — ativa o grader independente da Anthropic.
@@ -297,6 +297,7 @@ def _stream_events(
     output_parts: list[str] = []
     outcome_verdict: str | None = None
     outcome_iterations: int = 0
+    spawned_threads: list[dict[str, Any]] = []
 
     with client.beta.sessions.events.stream(session_id) as stream:
         if outcome:
@@ -347,9 +348,17 @@ def _stream_events(
             elif etype == "session.status_running":
                 logger.debug("session.status_running")
             elif etype == "session.thread_created":
+                agent_name = getattr(event, "agent_name", None) or getattr(event, "agent_id", "?")
+                thread_id = getattr(event, "thread_id", None) or getattr(event, "id", None)
+                agent_id_ref = getattr(event, "agent_id", None)
+                spawned_threads.append({
+                    "agent_name": str(agent_name),
+                    "agent_id": str(agent_id_ref) if agent_id_ref else None,
+                    "thread_id": str(thread_id) if thread_id else None,
+                })
                 logger.info(
-                    "session.thread_created: agent=%s",
-                    getattr(event, "agent_name", "?"),
+                    "session.thread_created: agent=%s thread_id=%s",
+                    agent_name, thread_id,
                 )
             elif etype and "outcome_evaluation" in etype:
                 # Captura iteration count e verdict final do grader.
@@ -365,7 +374,59 @@ def _stream_events(
                 )
             elif etype == "session.status_idle":
                 break
-    return "".join(output_parts), tool_uses, outcome_verdict, outcome_iterations
+    return (
+        "".join(output_parts), tool_uses,
+        outcome_verdict, outcome_iterations, spawned_threads,
+    )
+
+
+async def _persist_thread_as_child_task(
+    session: AsyncSession,
+    *,
+    parent_task: Task,
+    thread_info: dict[str, Any],
+    child_index: int,
+) -> None:
+    """Cria uma Task filha representando uma thread spawnada pelo coordinator.
+
+    Idempotente por (parent_task_id, anthropic_session_id=thread_id):
+    se ja existe Task filha com mesmo thread_id, nao duplica.
+    """
+    thread_id = thread_info.get("thread_id")
+    agent_name = thread_info.get("agent_name") or "?"
+
+    if thread_id:
+        existing = (
+            await session.execute(
+                select(Task).where(
+                    Task.parent_task_id == parent_task.id,
+                    Task.anthropic_session_id == thread_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            return
+
+    pseudo_key = (
+        f"{parent_task.jira_issue_key}.thread-{child_index}"
+        if parent_task.jira_issue_key
+        else f"thread-{child_index}"
+    )
+    child = Task(
+        client_id=parent_task.client_id,
+        squad_id=parent_task.squad_id,
+        jira_workspace_url=parent_task.jira_workspace_url,
+        jira_issue_key=pseudo_key,
+        title=f"Thread {child_index}: {agent_name}",
+        parent_task_id=parent_task.id,
+        anthropic_session_id=thread_id,
+    )
+    session.add(child)
+    await session.flush()
+    logger.info(
+        "thread persistida como Task filha id=%s parent=%s thread_id=%s",
+        child.id, parent_task.id, thread_id,
+    )
 
 
 async def _record_usage(
@@ -520,8 +581,12 @@ async def run_managed_task(
     tool_uses: list[str] = []
     outcome_verdict: str | None = None
     outcome_iterations: int = 0
+    spawned_threads: list[dict[str, Any]] = []
     try:
-        output_text, tool_uses, outcome_verdict, outcome_iterations = _stream_events(
+        (
+            output_text, tool_uses,
+            outcome_verdict, outcome_iterations, spawned_threads,
+        ) = _stream_events(
             anthropic_client, anth_session.id, user_message, spec.outcome,
         )
     except Exception as exc:
@@ -569,6 +634,18 @@ async def run_managed_task(
                     task_db.outcome_status = OutcomeStatus.PENDING
                 task_db.outcome_iterations = outcome_iterations
                 task_db.outcome_rubric_ref = spec.outcome.get("rubric_ref")
+
+        # Persiste threads spawnadas pelo coordinator como Tasks filhas.
+        # parent_task_id aponta pra task pai (coordinator).
+        # anthropic_session_id na filha = thread_id (subsession).
+        for idx, thread_info in enumerate(spawned_threads, start=1):
+            await _persist_thread_as_child_task(
+                session,
+                parent_task=task,
+                thread_info=thread_info,
+                child_index=idx,
+            )
+
         await session.commit()
 
     # 7. Cleanup leve da session na Anthropic (opcional)
