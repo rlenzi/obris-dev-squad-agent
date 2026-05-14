@@ -29,6 +29,7 @@ from dev_autonomo.agent_runtime.managed_runner import (
     run_managed_task,
 )
 from dev_autonomo.common.enums import AgentTier, MemoryStoreKind, TaskStage, TaskStatus
+from dev_autonomo.common.repos import normalize_github_https_url
 from dev_autonomo.config import get_settings
 from dev_autonomo.db.models import (
     AgentInstance,
@@ -120,13 +121,17 @@ async def start_analysis(
 
     resources: list[dict] = []
     for repo_url in repo_urls:
+        canonical = normalize_github_https_url(repo_url)
+        if canonical is None:
+            logger.warning("repo_url ignorado (formato nao reconhecido): %s", repo_url)
+            continue
         if github_token:
             resources.append({
                 "type": "github_repository",
-                "url": repo_url,
+                "url": canonical,
                 "authorization_token": github_token,
                 "checkout": {"type": "branch", "name": "main"},
-                "mount_path": f"/mnt/repo/{_repo_dir_name(repo_url)}",
+                "mount_path": f"/mnt/repo/{_repo_dir_name(canonical)}",
             })
     if memory_store_id:
         resources.append({
