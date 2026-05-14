@@ -15,6 +15,7 @@ from dev_autonomo.db.mixins import TimestampMixin
 if TYPE_CHECKING:
     from dev_autonomo.db.models.agent import AgentInstance
     from dev_autonomo.db.models.core import Client
+    from dev_autonomo.db.models.squad_memory_store import SquadMemoryStore
 
 
 class Squad(Base, TimestampMixin):
@@ -48,6 +49,10 @@ class Squad(Base, TimestampMixin):
         back_populates="squad",
         cascade="all, delete-orphan",
         foreign_keys="Manifest.squad_id",
+    )
+    memory_stores: Mapped[list["SquadMemoryStore"]] = relationship(
+        back_populates="squad",
+        cascade="all, delete-orphan",
     )
 
 
