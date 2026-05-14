@@ -12,6 +12,7 @@ import AgentDetailPage from '@/pages/AgentDetail';
 import AgentRunDetailPage from '@/pages/AgentRunDetail';
 import CostPage from '@/pages/Cost';
 import SkillsCatalogPage from '@/pages/SkillsCatalog';
+import StackKnowledgePage from '@/pages/StackKnowledge';
 
 function ProtectedRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -69,6 +70,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <SkillsCatalogPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/stack-knowledge"
+        element={
+          <ProtectedRoute>
+            <StackKnowledgePage />
           </ProtectedRoute>
         }
       />
