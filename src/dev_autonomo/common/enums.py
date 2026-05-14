@@ -86,3 +86,28 @@ class ApiCallKind(StrEnum):
     WEBHOOK = "webhook"
     OTHER = "other"
 
+
+class OutcomeStatus(StrEnum):
+    """Status de uma rubric/outcome associada a uma task.
+
+    - PENDING: outcome definido mas grader ainda nao avaliou.
+    - SATISFIED: grader retornou result=satisfied.
+    - FAILED: grader retornou result=failed apos max_iterations.
+    - SKIPPED: task rodou sem outcome definido (legado ou opt-out).
+    """
+    PENDING = "pending"
+    SATISFIED = "satisfied"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class MemoryStoreKind(StrEnum):
+    """Tipo de memory_store associado a uma squad.
+
+    Sao colecoes separadas com proposito proprio. Squad pode ter varios.
+    """
+    INSIGHTS = "insights"        # consolidacao via Dreaming
+    PLAYBOOK = "playbook"        # convencoes/padroes aprendidos
+    CONVENTIONS = "conventions"  # decisoes explicitas registradas
+    ONBOARDING = "onboarding"    # outputs do OA durante setup
+

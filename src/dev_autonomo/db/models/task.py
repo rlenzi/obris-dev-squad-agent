@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from dev_autonomo.common.enums import TaskStage, TaskStatus
+from dev_autonomo.common.enums import OutcomeStatus, TaskStage, TaskStatus
 from dev_autonomo.db.base import Base
 from dev_autonomo.db.mixins import TimestampMixin
 
@@ -58,6 +58,24 @@ class Task(Base, TimestampMixin):
     # URL do PR no GitHub criado por esta task (preenchido pelo agente
     # quando chama github_create_pr). Link direto em vez de search.
     pr_url: Mapped[str | None] = mapped_column(String(512))
+
+    # Managed Agents — session da Anthropic criada por managed_runner.
+    # Promovido de demand_payload['anthropic_session_id'] pra coluna
+    # queryable. Painel usa pra deep-link e debug.
+    anthropic_session_id: Mapped[str | None] = mapped_column(String(64), index=True)
+
+    # Outcomes (Anthropic grader) — populado durante stream via
+    # span.outcome_evaluation_*. SKIPPED quando task rodou sem outcome
+    # definido (legado ou opt-out).
+    outcome_status: Mapped[OutcomeStatus] = mapped_column(
+        Enum(OutcomeStatus, name="outcome_status_enum", create_type=False),
+        default=OutcomeStatus.SKIPPED,
+        nullable=False,
+    )
+    outcome_iterations: Mapped[int] = mapped_column(default=0, nullable=False)
+    # Path no repo OU hash identificando a rubric usada (rubric textual
+    # nao fica inteira aqui pra evitar payload grande).
+    outcome_rubric_ref: Mapped[str | None] = mapped_column(String(255))
 
     parent: Mapped["Task | None"] = relationship(
         "Task",

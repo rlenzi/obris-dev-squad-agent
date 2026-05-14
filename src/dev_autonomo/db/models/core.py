@@ -48,6 +48,13 @@ class Client(Base, TimestampMixin):
     # NULL = environment ainda nao foi criado na Anthropic.
     anthropic_environment_id: Mapped[str | None] = mapped_column(String(64))
 
+    # Managed Agents — Files API file_ids dos secrets do cliente. O wizard
+    # do painel faz upload do .env de Jira/GitHub e armazena o file_id
+    # aqui; sessoes do agente recebem como resource montado em
+    # /mnt/secrets/jira.env / github.env. Rotacao = re-upload + delete antigo.
+    jira_secrets_file_id: Mapped[str | None] = mapped_column(String(64))
+    github_secrets_file_id: Mapped[str | None] = mapped_column(String(64))
+
     # Fase 2: provider de cloud escolhido pelo cliente (aws/gcp/azure/ssh).
     # Vazio enquanto cliente não configurou.
     cloud_provider: Mapped[str | None] = mapped_column(String(32))
