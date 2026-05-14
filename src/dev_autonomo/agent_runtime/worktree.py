@@ -200,41 +200,49 @@ class GitWorktreeManager:
         wt_path = wt_root / task_handle
         if wt_path.exists():
             shutil.rmtree(wt_path, ignore_errors=True)
-            await _run_git(bare, ["worktree", "prune"], check=False)
+
+        # Sempre prune antes do add — limpa records de worktrees antigos
+        # cujos diretórios foram apagados (problema comum em modo address-
+        # review que reutiliza a mesma branch).
+        await _run_git(bare, ["worktree", "prune"], check=False)
 
         if checkout_existing_branch is not None:
-            # Modo "address review": fetch da branch existente + worktree
-            # add sem -b. Usa origin/<branch> como starting point.
+            # Modo "address review": fetch da branch existente + worktree add.
+            # Branch local pode existir (de run anterior) ou não. Detecta e
+            # ramifica.
             target = checkout_existing_branch
             await _run_git(
                 bare, ["fetch", "origin", target], check=False
             )
+
+            # Existe branch local com esse nome?
+            rc_check, _, _ = await _run_git(
+                bare, ["show-ref", "--verify", f"refs/heads/{target}"], check=False,
+            )
+            branch_exists_locally = rc_check == 0
+
             logger.info(
                 "Criando worktree em branch existente: bare=%s path=%s "
-                "branch=%s",
-                bare,
-                wt_path,
-                target,
+                "branch=%s (local=%s)",
+                bare, wt_path, target, branch_exists_locally,
             )
-            await _run_git(
-                bare,
-                [
-                    "worktree",
-                    "add",
-                    "--track",
-                    "-b",
-                    target,
-                    str(wt_path),
-                    f"origin/{target}",
-                ],
-                # Se branch local ja existe, fallback sem -b
-                check=False,
-            )
-            # Fallback: branch local já existia
-            if not (wt_path / ".git").exists():
+
+            if branch_exists_locally:
+                # Branch local já existe — checkout direto, sem -b.
+                # Se já está checked-out em outro worktree (record stale),
+                # o prune anterior deveria ter limpado; se não limpou, falha
+                # com mensagem clara.
+                await _run_git(
+                    bare, ["worktree", "add", str(wt_path), target],
+                )
+            else:
+                # Cria branch local rastreando origin/<target>.
                 await _run_git(
                     bare,
-                    ["worktree", "add", str(wt_path), target],
+                    [
+                        "worktree", "add", "--track", "-b", target,
+                        str(wt_path), f"origin/{target}",
+                    ],
                 )
             effective_branch = target
         else:
