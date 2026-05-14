@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dev_autonomo.common.encryption import SecretEncryptor
-from dev_autonomo.common.enums import UserRole
+from dev_autonomo.common.enums import SecretKind, UserRole
 from dev_autonomo.control_plane.dependencies import (
     get_session,
     require_client_context,
@@ -28,6 +28,7 @@ from dev_autonomo.control_plane.schemas.credential import (
     CredentialRotate,
 )
 from dev_autonomo.db.models import Client, EncryptedSecret
+from dev_autonomo.services import anthropic_files_sync
 
 router = APIRouter(prefix="/client/credentials", tags=["client / credentials"])
 
@@ -92,6 +93,10 @@ async def create_my_credential(
     session.add(cred)
     await session.commit()
     await session.refresh(cred)
+
+    # Sync com Files API se for Jira ou GitHub (entrada do agente).
+    await _sync_files_for_kind(session, client, body.kind)
+
     return cred
 
 
@@ -116,6 +121,10 @@ async def rotate_my_credential(
     cred.last_rotated_at = datetime.now(tz=UTC)
     await session.commit()
     await session.refresh(cred)
+
+    # Sync com Files API se for Jira ou GitHub.
+    await _sync_files_for_kind(session, client, cred.kind)
+
     return cred
 
 
@@ -133,5 +142,52 @@ async def delete_my_credential(
         raise HTTPException(
             status.HTTP_404_NOT_FOUND, detail="credencial nao encontrada"
         )
+    deleted_kind = cred.kind
     await session.delete(cred)
     await session.commit()
+
+    # Apos deletar, sync Files API pode resultar em skipped (sem token);
+    # ou ainda existem outras credenciais do mesmo kind. Re-sync resolve.
+    await _sync_files_for_kind(session, client, deleted_kind)
+
+
+@router.post("/sync-files")
+async def force_sync_files(
+    ctx: tuple[Client, UserRole] = Depends(require_client_context),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Forca resync de jira/github secrets pra Files API.
+
+    Util pra recovery quando file_id foi deletado externamente, ou
+    apos migracao quando colunas anthropic foram adicionadas mas
+    credenciais ja existiam.
+    """
+    client, role = ctx
+    _require_admin(role)
+    results = await anthropic_files_sync.sync_all_for_client(session, client)
+    await session.commit()
+    return {
+        "jira": {
+            "file_id": results["jira"].file_id,
+            "status": results["jira"].status,
+            "error": results["jira"].error,
+        },
+        "github": {
+            "file_id": results["github"].file_id,
+            "status": results["github"].status,
+            "error": results["github"].error,
+        },
+    }
+
+
+async def _sync_files_for_kind(
+    session: AsyncSession, client: Client, kind: SecretKind,
+) -> None:
+    """Dispara sync apenas pro kind alterado. Best-effort: nao quebra o
+    request se Files API falhar (caller decide se loga/alerta)."""
+    if kind == SecretKind.JIRA_TOKEN:
+        await anthropic_files_sync.sync_jira_secrets(session, client)
+        await session.commit()
+    elif kind == SecretKind.GITHUB_TOKEN:
+        await anthropic_files_sync.sync_github_secrets(session, client)
+        await session.commit()
