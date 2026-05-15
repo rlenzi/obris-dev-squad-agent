@@ -114,6 +114,19 @@ class AgentInstanceUpdate(BaseModel):
     config_overrides: dict[str, Any] | None = None
 
 
+class AgentPromptUpdate(BaseModel):
+    """Edicao do prompt e/ou modelo de um agente.
+
+    Backend cria uma copia client-scoped do SkillTemplate (se vier de
+    template SYSTEM) ou bumpa a versao (se ja for client-scoped). O
+    anthropic_agent_id da nova versao fica NULL — re-provisionamento
+    ocorre lazy na proxima execucao do agente.
+    """
+
+    system_prompt: str = Field(..., min_length=10, max_length=20000)
+    model_alias: str | None = Field(None, max_length=64)
+
+
 class AgentInstancePublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

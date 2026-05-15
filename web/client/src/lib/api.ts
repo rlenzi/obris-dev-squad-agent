@@ -434,6 +434,35 @@ export async function fetchSkillTemplate(id: string) {
   return data;
 }
 
+export interface AgentPromptUpdate {
+  system_prompt: string;
+  model_alias?: string;
+}
+
+export async function updateAgentPrompt(
+  clientId: string,
+  squadId: string,
+  agentId: string,
+  payload: AgentPromptUpdate,
+) {
+  const { data } = await api.patch<AgentInstance>(
+    `/client/squads/${squadId}/agents/${agentId}/prompt`,
+    payload,
+    { headers: { 'X-Client-Id': clientId } },
+  );
+  return data;
+}
+
+export async function deleteAgent(
+  clientId: string,
+  squadId: string,
+  agentId: string,
+) {
+  await api.delete(`/client/squads/${squadId}/agents/${agentId}`, {
+    headers: { 'X-Client-Id': clientId },
+  });
+}
+
 // === Agent Runs (LEO-26 / LEO-29) ===
 
 export type RunStatus = 'completed' | 'failed' | 'in_progress';

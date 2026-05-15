@@ -6,14 +6,16 @@ operar em qualquer client passando X-Client-Id.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dev_autonomo.common.enums import (
     AgentInstanceStatus,
+    AgentTier,
     SquadStatus,
     UserRole,
 )
@@ -26,6 +28,7 @@ from dev_autonomo.control_plane.schemas.squad import (
     AgentInstanceCreate,
     AgentInstancePublic,
     AgentInstanceUpdate,
+    AgentPromptUpdate,
     ManifestPublic,
     ManifestUpdate,
     SquadCreate,
@@ -294,3 +297,160 @@ async def update_agent(
     await session.commit()
     await session.refresh(agent)
     return agent
+
+
+# Tiers obrigatorios no pipeline. Se sobrar 0 ativo daquele tier apos
+# remocao/disable, bloqueia a operacao.
+_REQUIRED_TIERS = (AgentTier.ARCHITECT, AgentTier.DEV)
+
+
+async def _count_active_peers_of_tier(
+    session: AsyncSession,
+    squad_id: UUID,
+    tier: AgentTier,
+    exclude_agent_id: UUID,
+) -> int:
+    """Conta agentes ativos do mesmo tier na squad, excluindo o alvo."""
+    stmt = (
+        select(func.count(AgentInstance.id))
+        .join(SkillTemplate, SkillTemplate.id == AgentInstance.skill_template_id)
+        .where(
+            AgentInstance.squad_id == squad_id,
+            AgentInstance.id != exclude_agent_id,
+            AgentInstance.status != AgentInstanceStatus.DISABLED,
+            SkillTemplate.tier == tier,
+        )
+    )
+    return (await session.execute(stmt)).scalar_one() or 0
+
+
+@router.patch(
+    "/{squad_id}/agents/{agent_id}/prompt",
+    response_model=AgentInstancePublic,
+)
+async def update_agent_prompt(
+    squad_id: UUID,
+    agent_id: UUID,
+    body: AgentPromptUpdate,
+    ctx: tuple[Client, UserRole] = Depends(require_client_context),
+    session: AsyncSession = Depends(get_session),
+) -> AgentInstance:
+    """Edita prompt + modelo de um agente.
+
+    Cria nova versao do SkillTemplate (client-scoped) com o prompt
+    custom. Re-aponta o AgentInstance. anthropic_agent_id NAO eh
+    copiado — re-provisionamento ocorre lazy na proxima execucao.
+    """
+    client, role = ctx
+    _ensure_can_write(role)
+    await _get_squad_or_404(session, client.id, squad_id)
+
+    agent = await session.get(AgentInstance, agent_id)
+    if agent is None or agent.squad_id != squad_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="agente nao encontrado")
+    if agent.status == AgentInstanceStatus.DISABLED:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail="agente desativado nao pode ser editado",
+        )
+
+    current_tpl = await session.get(SkillTemplate, agent.skill_template_id)
+    if current_tpl is None:
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="skill template do agente nao encontrado",
+        )
+    if current_tpl.client_id is not None and current_tpl.client_id != client.id:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            detail="skill template pertence a outro client",
+        )
+
+    # Proxima versao para esse slug dentro deste client.
+    last_version = (
+        await session.execute(
+            select(func.max(SkillTemplate.version)).where(
+                SkillTemplate.client_id == client.id,
+                SkillTemplate.slug == current_tpl.slug,
+            )
+        )
+    ).scalar_one_or_none() or 0
+    next_version = max(last_version, current_tpl.version) + 1
+
+    new_tpl = SkillTemplate(
+        client_id=client.id,
+        slug=current_tpl.slug,
+        name=current_tpl.name,
+        description=current_tpl.description,
+        version=next_version,
+        tier=current_tpl.tier,
+        model_alias=body.model_alias or current_tpl.model_alias,
+        stack_primary=current_tpl.stack_primary,
+        stack_secondary=current_tpl.stack_secondary,
+        system_prompt_ref=current_tpl.system_prompt_ref,
+        tools_enabled=current_tpl.tools_enabled,
+        knowledge_partitions=current_tpl.knowledge_partitions,
+        active=True,
+        anthropic_agent_id=None,  # lazy reprovision
+        system_prompt_template=body.system_prompt,
+        template_variables=current_tpl.template_variables,
+        parent_stack_profile_id=current_tpl.parent_stack_profile_id,
+    )
+    session.add(new_tpl)
+    await session.flush()
+
+    agent.skill_template_id = new_tpl.id
+    # marca customizacao no config_overrides pra UI sinalizar "personalizado"
+    overrides = dict(agent.config_overrides or {})
+    overrides["system_prompt_custom_at"] = datetime.now(timezone.utc).isoformat()
+    overrides["system_prompt_template_version"] = next_version
+    agent.config_overrides = overrides
+
+    await session.commit()
+    await session.refresh(agent)
+    return agent
+
+
+@router.delete(
+    "/{squad_id}/agents/{agent_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_agent(
+    squad_id: UUID,
+    agent_id: UUID,
+    ctx: tuple[Client, UserRole] = Depends(require_client_context),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Soft delete: marca AgentInstance.status = DISABLED.
+
+    Bloqueia se for o unico agente ativo de tier ARCHITECT ou DEV.
+    BA/Reviewer/OnboardingAnalyst sao removiveis livremente.
+    """
+    client, role = ctx
+    _ensure_can_write(role)
+    await _get_squad_or_404(session, client.id, squad_id)
+
+    agent = await session.get(AgentInstance, agent_id)
+    if agent is None or agent.squad_id != squad_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="agente nao encontrado")
+    if agent.status == AgentInstanceStatus.DISABLED:
+        # idempotente — ja esta desativado
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    tpl = await session.get(SkillTemplate, agent.skill_template_id)
+    if tpl is not None and tpl.tier in _REQUIRED_TIERS:
+        peers = await _count_active_peers_of_tier(
+            session, squad_id, tpl.tier, exclude_agent_id=agent.id
+        )
+        if peers == 0:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                detail=(
+                    f"impossivel remover unico agente {tpl.tier.value} ativo. "
+                    "Adicione outro agente desse tier antes de remover."
+                ),
+            )
+
+    agent.status = AgentInstanceStatus.DISABLED
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
