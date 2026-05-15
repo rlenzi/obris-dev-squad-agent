@@ -904,6 +904,60 @@ export async function getOnboardingManifest(
   return data.raw as OnboardingManifest;
 }
 
+// ---- Onboarding Result Manifest v2 (PR-3 do redesign) ----
+//
+// O backend gravar o manifest com schema novo no memory_store ONBOARDING.
+// Este type espelha o JSON do OA scan v2. Lido pela Tela 3 do redesign.
+
+export interface AnalysisStackConventions {
+  observed_patterns: Record<string, string>;
+  recommended_for_agents: Record<string, string>;
+}
+
+export interface AnalysisStack {
+  slug: string;
+  name: string;
+  paths: string[];
+  framework: string | null;
+  framework_version: string | null;
+  conventions: AnalysisStackConventions;
+}
+
+export interface AnalysisAntiPattern {
+  issue: string;
+  severity: 'low' | 'medium' | 'high';
+  occurrences: string[];
+  recommendation: string;
+}
+
+export interface AnalysisAgentRec {
+  tier: 'ba' | 'architect' | 'dev' | 'reviewer';
+  stack_slug: string | null;
+  rationale: string;
+}
+
+export interface OnboardingResultManifest {
+  summary: string;
+  stacks: AnalysisStack[];
+  jira_projects: string[];
+  anti_patterns_detected: AnalysisAntiPattern[];
+  recommended_agents: AnalysisAgentRec[];
+  tool_calls_summary?: Record<string, unknown>;
+  clone_metadata?: Record<string, unknown>;
+  saved_at?: string;
+}
+
+export async function getOnboardingResult(
+  clientId: string,
+  squadId: string,
+): Promise<OnboardingResultManifest> {
+  const { data } = await api.get(
+    `/client/squads/${squadId}/onboarding-manifest`,
+    { headers: { 'X-Client-Id': clientId } },
+  );
+  return data.raw as OnboardingResultManifest;
+}
+
 export async function proposeSkills(
   clientId: string,
   squadId: string,
