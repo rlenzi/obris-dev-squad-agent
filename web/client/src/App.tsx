@@ -13,6 +13,9 @@ import AgentRunDetailPage from '@/pages/AgentRunDetail';
 import CredentialsPage from '@/pages/Credentials';
 import CostPage from '@/pages/Cost';
 import SetupPage from '@/pages/Setup';
+import SetupChoicePage from '@/pages/SetupChoice';
+import SetupGreenfieldPlaceholderPage from '@/pages/SetupGreenfieldPlaceholder';
+import SetupExplorePlaceholderPage from '@/pages/SetupExplorePlaceholder';
 import ComingSoonPage from '@/pages/ComingSoon';
 import { fetchSquadsForClient } from '@/lib/api';
 import { useClientId } from '@/lib/use-client-id';
@@ -99,6 +102,44 @@ export default function App() {
           <ProtectedRoute>
             <SetupGate>
               <SetupPage />
+            </SetupGate>
+          </ProtectedRoute>
+        }
+      />
+      {/* Redesign do onboarding (PR-4 de 8) — tela 0 acessivel direto.
+          O switch final do /setup pra tela 0 acontece no PR-8. */}
+      <Route
+        path="/setup/start"
+        element={
+          <ProtectedRoute>
+            <SetupGate>
+              <div className="min-h-screen bg-background">
+                <SetupChoicePage />
+              </div>
+            </SetupGate>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/setup/greenfield"
+        element={
+          <ProtectedRoute>
+            <SetupGate>
+              <div className="min-h-screen bg-background">
+                <SetupGreenfieldPlaceholderPage />
+              </div>
+            </SetupGate>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/setup/explore"
+        element={
+          <ProtectedRoute>
+            <SetupGate>
+              <div className="min-h-screen bg-background">
+                <SetupExplorePlaceholderPage />
+              </div>
             </SetupGate>
           </ProtectedRoute>
         }
