@@ -14,7 +14,7 @@ import CredentialsPage from '@/pages/Credentials';
 import CostPage from '@/pages/Cost';
 import SetupChoicePage from '@/pages/SetupChoice';
 import SetupGreenfieldPlaceholderPage from '@/pages/SetupGreenfieldPlaceholder';
-import SetupExplorePlaceholderPage from '@/pages/SetupExplorePlaceholder';
+import SetupExplorePage from '@/pages/SetupExplore';
 import SetupRepositoryPage from '@/pages/SetupRepository';
 import SetupAnalyzingPage from '@/pages/SetupAnalyzing';
 import SetupResultPage from '@/pages/SetupResult';
@@ -141,7 +141,7 @@ export default function App() {
           <ProtectedRoute>
             <SetupGate>
               <div className="min-h-screen bg-background">
-                <SetupExplorePlaceholderPage />
+                <SetupExplorePage />
               </div>
             </SetupGate>
           </ProtectedRoute>
