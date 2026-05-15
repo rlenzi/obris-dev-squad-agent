@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, UniqueConstraint
+from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -81,6 +81,17 @@ class Task(Base, TimestampMixin):
     # Path no repo OU hash identificando a rubric usada (rubric textual
     # nao fica inteira aqui pra evitar payload grande).
     outcome_rubric_ref: Mapped[str | None] = mapped_column(String(255))
+
+    # Onboarding Analyzer v2 — state machine granular (PR-3 do redesign).
+    # current_step: nome curto da etapa atual (cloning, scanning,
+    #   oa_scanning, indexing, finalizing, grading). None quando task
+    #   nao eh de onboarding.
+    # step_label: mensagem em prosa primeira pessoa pra tela 2 viva.
+    # scan_progress: contadores granulares (total_files, files_processed,
+    #   chunks_total, chunks_indexed, oa_iterations, grader_verdict).
+    current_step: Mapped[str | None] = mapped_column(String(64))
+    step_label: Mapped[str | None] = mapped_column(Text)
+    scan_progress: Mapped[dict | None] = mapped_column(JSONB)
 
     parent: Mapped["Task | None"] = relationship(
         "Task",

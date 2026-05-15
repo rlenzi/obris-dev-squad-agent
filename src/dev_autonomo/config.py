@@ -51,6 +51,23 @@ class Settings(BaseSettings):
     DREAMING_ALLOW_RAW_HTTP: bool = False
     DREAMING_MODEL: str = "claude-sonnet-4-6"
 
+    # Onboarding Analyzer v2 (PR-3 do redesign).
+    # Diretorio base onde o backend clona repos pra RAG ingest local. Cada
+    # task fica isolada em {CLONE_BASE_DIR}/{client_id}/{task_id}/. Em prod
+    # apontar pra volume Docker named ou /var/lib/dev-autonomo/clones.
+    CLONE_BASE_DIR: str = "~/.local/share/dev-autonomo/clones"
+
+    # Modelo Claude usado pelo grader independente que checa o outcome
+    # rubric do OA scan v2. Haiku eh ~25x mais barato que Opus e adequado
+    # pra checagem de rubric (nao precisa raciocinar profundo, so verificar).
+    GRADER_MODEL: str = "claude-haiku-4-5-20251001"
+
+    # Maximo de iteracoes do loop OA <-> grader. Quando esgota, task vai pra
+    # FAILED com motivo. 3 e o equilibrio Anthropic recomenda — suficiente
+    # pra OA corrigir lacunas obvias, sem permitir loop infinito por erro
+    # estrutural do prompt.
+    OA_GRADER_MAX_ITERATIONS: int = 3
+
     # Master key Fernet pra encryptar segredos no banco
     MASTER_ENCRYPTION_KEY: SecretStr | None = None
 
