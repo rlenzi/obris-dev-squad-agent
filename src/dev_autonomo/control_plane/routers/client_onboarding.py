@@ -20,6 +20,7 @@ from dev_autonomo.control_plane.dependencies import (
     require_client_context,
 )
 from dev_autonomo.control_plane.schemas.onboarding import (
+    CancelAnalysisResponse,
     FinalizeSetupRequest,
     FinalizeSetupResponse,
     ManifestResponse,
@@ -28,7 +29,8 @@ from dev_autonomo.control_plane.schemas.onboarding import (
     RunAnalysisResponse,
 )
 from dev_autonomo.db.models import Client, EncryptedSecret, Squad
-from dev_autonomo.services import onboarding_analyzer
+from dev_autonomo.onboarding import analyzer as oa_v2
+from dev_autonomo.services import onboarding_analyzer as oa_legacy
 from dev_autonomo.services.onboarding_analyzer import FinalizeSkillSpec
 
 logger = logging.getLogger(__name__)
@@ -83,8 +85,8 @@ async def run_onboarding_analysis(
     _require_client_admin(role)
     squad = await _resolve_squad(session, client, squad_id)
 
-    # Detecta se ja tem analise rodando
-    existing = await onboarding_analyzer._find_active_onboarding_task(session, squad.id)
+    # Detecta se ja tem analise rodando (v2 — state machine granular)
+    existing = await oa_v2._find_active_onboarding_task(session, squad.id)
     already = existing is not None
 
     github_token = await _client_github_token(session, client.id)
@@ -98,10 +100,12 @@ async def run_onboarding_analysis(
         )
 
     try:
-        task_id = await onboarding_analyzer.start_analysis(
+        task_id = await oa_v2.start_analysis(
             session, client=client, squad=squad,
             repo_urls=body.repo_urls, github_token=github_token,
         )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(exc))
     except RuntimeError as exc:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
     await session.commit()
@@ -121,18 +125,11 @@ async def get_onboarding_status(
     ctx: tuple[Client, UserRole] = Depends(require_client_context),
     session: AsyncSession = Depends(get_session),
 ) -> OnboardingStatusResponse:
-    """Polling endpoint — retorna estado sintetico."""
+    """Polling endpoint — retorna estado granular (v2)."""
     client, _ = ctx
     squad = await _resolve_squad(session, client, squad_id)
-    state = await onboarding_analyzer.get_analysis_status(session, squad)
-    return OnboardingStatusResponse(
-        task_id=state.task_id,
-        status=state.status,
-        current_step=state.current_step,
-        progress_pct=state.progress_pct,
-        manifest_ready_at=state.manifest_ready_at,
-        error_message=state.error_message,
-    )
+    state_dict = await oa_v2.get_analysis_status(session, squad)
+    return OnboardingStatusResponse.model_validate(state_dict)
 
 
 @router.get(
@@ -147,7 +144,7 @@ async def get_onboarding_manifest(
     """Le manifest.json do memory_store kind=ONBOARDING da squad."""
     client, _ = ctx
     squad = await _resolve_squad(session, client, squad_id)
-    manifest = await onboarding_analyzer.read_manifest(session, squad)
+    manifest = await oa_v2.read_manifest(session, squad)
     if manifest is None:
         raise HTTPException(
             status.HTTP_404_NOT_FOUND,
@@ -182,7 +179,7 @@ async def finalize_setup(
     ]
 
     try:
-        instances = await onboarding_analyzer.finalize_setup(
+        instances = await oa_legacy.finalize_setup(
             session, client=client, squad=squad, skills_spec=specs,
         )
     except ValueError as exc:
@@ -192,4 +189,31 @@ async def finalize_setup(
     return FinalizeSetupResponse(
         agent_instance_ids=[i.id for i in instances],
         created_skill_ids=[i.skill_template_id for i in instances],
+    )
+
+
+@router.post(
+    "/{squad_id}/cancel-onboarding-analysis",
+    response_model=CancelAnalysisResponse,
+)
+async def cancel_onboarding_analysis(
+    squad_id: UUID,
+    ctx: tuple[Client, UserRole] = Depends(require_client_context),
+    session: AsyncSession = Depends(get_session),
+) -> CancelAnalysisResponse:
+    """Cancela analise em curso. Background task checa cancelamento entre
+    etapas e sai cedo com cleanup do clone."""
+    client, role = ctx
+    _require_client_admin(role)
+    squad = await _resolve_squad(session, client, squad_id)
+
+    try:
+        task_id, previous, new_status = await oa_v2.cancel_analysis(session, squad)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+    return CancelAnalysisResponse(
+        task_id=task_id,
+        previous_status=previous,
+        status=new_status,  # type: ignore[arg-type]
     )
