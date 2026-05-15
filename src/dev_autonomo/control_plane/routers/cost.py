@@ -152,3 +152,101 @@ async def client_cost_summary(
         period_end=period_end,
         breakdown=_breakdown_to_response(b),
     )
+
+
+# ---- S-4: endpoints adicionais pro painel de custos ----
+
+
+from pydantic import BaseModel  # noqa: E402
+
+
+class TopTaskCost(BaseModel):
+    task_id: UUID
+    jira_issue_key: str | None
+    title: str
+    squad_id: UUID
+    cost_usd: float
+    api_calls_count: int
+
+
+class TopTasksResponse(BaseModel):
+    items: list[TopTaskCost]
+
+
+@client_router.get("/top-tasks", response_model=TopTasksResponse)
+async def client_top_tasks_by_cost(
+    period_start: date | None = Query(None),
+    period_end: date | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    ctx: tuple[Client, UserRole] = Depends(require_client_context),
+    session: AsyncSession = Depends(get_session),
+) -> TopTasksResponse:
+    """Top N tasks mais caras do periodo. Usado no painel de custos D-06."""
+    from dev_autonomo.db.models import Task
+    client, _ = ctx
+    if period_start is None or period_end is None:
+        period_start, period_end = _default_period()
+
+    stmt = (
+        select(
+            Task.id, Task.jira_issue_key, Task.title, Task.squad_id,
+            func.coalesce(func.sum(ExternalApiCall.cost_usd), 0).label("total_cost"),
+            func.count(ExternalApiCall.id).label("api_count"),
+        )
+        .join(ExternalApiCall, ExternalApiCall.task_id == Task.id)
+        .where(
+            Task.client_id == client.id,
+            ExternalApiCall.created_at >= datetime.combine(period_start, datetime.min.time()),
+            ExternalApiCall.created_at <= datetime.combine(period_end, datetime.max.time()),
+        )
+        .group_by(Task.id, Task.jira_issue_key, Task.title, Task.squad_id)
+        .order_by(func.coalesce(func.sum(ExternalApiCall.cost_usd), 0).desc())
+        .limit(limit)
+    )
+    rows = (await session.execute(stmt)).all()
+    return TopTasksResponse(items=[
+        TopTaskCost(
+            task_id=tid, jira_issue_key=jkey, title=title,
+            squad_id=sid, cost_usd=float(total or 0), api_calls_count=cnt or 0,
+        )
+        for tid, jkey, title, sid, total, cnt in rows
+    ])
+
+
+class DailyCostPoint(BaseModel):
+    date: date
+    cost_usd: float
+
+
+class DailyCostResponse(BaseModel):
+    items: list[DailyCostPoint]
+
+
+@client_router.get("/daily-series", response_model=DailyCostResponse)
+async def client_daily_cost_series(
+    period_start: date | None = Query(None),
+    period_end: date | None = Query(None),
+    ctx: tuple[Client, UserRole] = Depends(require_client_context),
+    session: AsyncSession = Depends(get_session),
+) -> DailyCostResponse:
+    """Serie temporal de custo diario pro grafico do painel D-06."""
+    client, _ = ctx
+    if period_start is None or period_end is None:
+        period_start, period_end = _default_period()
+
+    stmt = (
+        select(
+            func.date(ExternalApiCall.created_at).label("day"),
+            func.coalesce(func.sum(ExternalApiCall.cost_usd), 0).label("total"),
+        )
+        .where(
+            ExternalApiCall.client_id == client.id,
+            ExternalApiCall.created_at >= datetime.combine(period_start, datetime.min.time()),
+            ExternalApiCall.created_at <= datetime.combine(period_end, datetime.max.time()),
+        )
+        .group_by(func.date(ExternalApiCall.created_at))
+        .order_by(func.date(ExternalApiCall.created_at))
+    )
+    rows = (await session.execute(stmt)).all()
+    items = [DailyCostPoint(date=d, cost_usd=float(total or 0)) for d, total in rows]
+    return DailyCostResponse(items=items)

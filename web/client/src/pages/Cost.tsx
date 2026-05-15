@@ -1,8 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { DollarSign, Calendar } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
-import { fetchClientCost } from '@/lib/api';
+import {
+  fetchClientCost, fetchDailyCostSeries, fetchTopTasksByCost,
+  type DailyCostPoint, type TopTaskCost,
+} from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -170,9 +174,154 @@ export default function ClientCostPage() {
               </p>
             </CardContent>
           </Card>
+
+          <DailySeriesChart
+            clientId={clientId!}
+            start={period.start}
+            end={period.end}
+          />
+
+          <TopTasksTable
+            clientId={clientId!}
+            start={period.start}
+            end={period.end}
+          />
         </>
       )}
     </div>
+  );
+}
+
+
+function DailySeriesChart({
+  clientId, start, end,
+}: { clientId: string; start: string; end: string }) {
+  const q = useQuery({
+    queryKey: ['cost-daily', clientId, start, end],
+    queryFn: () => fetchDailyCostSeries(clientId, { period_start: start, period_end: end }),
+  });
+  const items = q.data?.items ?? [];
+  if (items.length === 0) return null;
+  const maxCost = Math.max(...items.map(i => i.cost_usd), 0.01);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Custo diário</CardTitle>
+        <CardDescription>
+          Distribuição do consumo USD direto por dia
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <DailyBars items={items} maxCost={maxCost} />
+      </CardContent>
+    </Card>
+  );
+}
+
+
+function DailyBars({ items, maxCost }: { items: DailyCostPoint[]; maxCost: number }) {
+  // Bar chart SVG inline (sem chart lib). Cada barra = 1 dia.
+  const width = 600;
+  const height = 120;
+  const barWidth = Math.max(2, Math.floor(width / Math.max(items.length, 1)) - 2);
+  return (
+    <svg viewBox={`0 0 ${width} ${height + 20}`} className="w-full">
+      {items.map((p, i) => {
+        const h = (p.cost_usd / maxCost) * height;
+        return (
+          <g key={p.date}>
+            <rect
+              x={i * (barWidth + 2)}
+              y={height - h}
+              width={barWidth}
+              height={h}
+              fill="currentColor"
+              className="text-primary"
+              opacity={0.8}
+            >
+              <title>{p.date}: US$ {p.cost_usd.toFixed(4)}</title>
+            </rect>
+          </g>
+        );
+      })}
+      <text x={0} y={height + 14} className="text-[10px] fill-muted-foreground">
+        {items[0]?.date}
+      </text>
+      <text
+        x={width}
+        y={height + 14}
+        textAnchor="end"
+        className="text-[10px] fill-muted-foreground"
+      >
+        {items[items.length - 1]?.date}
+      </text>
+    </svg>
+  );
+}
+
+
+function TopTasksTable({
+  clientId, start, end,
+}: { clientId: string; start: string; end: string }) {
+  const navigate = useNavigate();
+  const q = useQuery({
+    queryKey: ['cost-top-tasks', clientId, start, end],
+    queryFn: () => fetchTopTasksByCost(clientId, {
+      period_start: start, period_end: end, limit: 20,
+    }),
+  });
+  const items = q.data?.items ?? [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Top 20 tasks mais caras</CardTitle>
+        <CardDescription>
+          Click numa linha pra ver o detalhe
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {items.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Nenhuma task no período.
+          </p>
+        ) : (
+          <div className="overflow-hidden rounded-md border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/30 text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 text-left">Issue</th>
+                  <th className="px-3 py-2 text-left">Título</th>
+                  <th className="px-3 py-2 text-right">API calls</th>
+                  <th className="px-3 py-2 text-right">Custo USD</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((t: TopTaskCost) => (
+                  <tr
+                    key={t.task_id}
+                    onClick={() => navigate(`/tasks/${t.task_id}`)}
+                    className="cursor-pointer border-t hover:bg-muted/30"
+                  >
+                    <td className="px-3 py-2 font-mono text-xs">
+                      {t.jira_issue_key ?? t.task_id.slice(0, 8)}
+                    </td>
+                    <td className="px-3 py-2">{t.title.slice(0, 60)}</td>
+                    <td className="px-3 py-2 text-right text-xs">
+                      {t.api_calls_count}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono text-xs">
+                      ${t.cost_usd.toFixed(4)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

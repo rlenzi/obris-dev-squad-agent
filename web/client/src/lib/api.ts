@@ -1095,6 +1095,45 @@ export async function fetchDashboardSummary(
 }
 
 
+// ---- Cost extras (S-4 do redesign) ----
+
+export interface TopTaskCost {
+  task_id: string;
+  jira_issue_key: string | null;
+  title: string;
+  squad_id: string;
+  cost_usd: number;
+  api_calls_count: number;
+}
+
+export async function fetchTopTasksByCost(
+  clientId: string,
+  params: { period_start?: string; period_end?: string; limit?: number } = {},
+): Promise<{ items: TopTaskCost[] }> {
+  const { data } = await api.get<{ items: TopTaskCost[] }>(
+    '/client/cost/top-tasks',
+    { params, headers: { 'X-Client-Id': clientId } },
+  );
+  return data;
+}
+
+export interface DailyCostPoint {
+  date: string;
+  cost_usd: number;
+}
+
+export async function fetchDailyCostSeries(
+  clientId: string,
+  params: { period_start?: string; period_end?: string } = {},
+): Promise<{ items: DailyCostPoint[] }> {
+  const { data } = await api.get<{ items: DailyCostPoint[] }>(
+    '/client/cost/daily-series',
+    { params, headers: { 'X-Client-Id': clientId } },
+  );
+  return data;
+}
+
+
 export interface FinalizeSkillEntry {
   catalog_skill_slug?: string | null;
   draft_to_materialize?: SkillTemplateDraft | null;
