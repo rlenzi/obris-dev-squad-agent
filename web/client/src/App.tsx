@@ -19,6 +19,8 @@ import SetupRepositoryPage from '@/pages/SetupRepository';
 import SetupAnalyzingPage from '@/pages/SetupAnalyzing';
 import SetupResultPage from '@/pages/SetupResult';
 import SetupReadyPage from '@/pages/SetupReady';
+import TasksListPage from '@/pages/TasksList';
+import TaskDetailPage from '@/pages/TaskDetail';
 import ComingSoonPage from '@/pages/ComingSoon';
 import { fetchSquadsForClient } from '@/lib/api';
 import { useClientId } from '@/lib/use-client-id';
@@ -234,6 +236,27 @@ export default function App() {
           <ProtectedRoute>
             <RequireSetupComplete>
               <SquadDetailPage />
+            </RequireSetupComplete>
+          </ProtectedRoute>
+        }
+      />
+      {/* S-2 do redesign — Tasks tenant-wide */}
+      <Route
+        path="/tasks"
+        element={
+          <ProtectedRoute>
+            <RequireSetupComplete>
+              <TasksListPage />
+            </RequireSetupComplete>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/tasks/:taskId"
+        element={
+          <ProtectedRoute>
+            <RequireSetupComplete>
+              <TaskDetailPage />
             </RequireSetupComplete>
           </ProtectedRoute>
         }

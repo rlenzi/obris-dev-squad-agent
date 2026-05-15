@@ -972,6 +972,129 @@ export async function proposeSkills(
   return data;
 }
 
+// ---- Client Tasks (S-2 do redesign) ----
+
+export type TaskStatusType =
+  | 'pending' | 'in_progress' | 'blocked' | 'done' | 'cancelled' | 'failed';
+
+export interface TaskListItem {
+  id: string;
+  squad_id: string;
+  squad_slug: string | null;
+  jira_issue_key: string | null;
+  title: string;
+  status: TaskStatusType;
+  current_step: string | null;
+  step_label: string | null;
+  assigned_agent_id: string | null;
+  started_at: string | null;
+  closed_at: string | null;
+  created_at: string;
+  pr_url: string | null;
+  cost_usd: number;
+  outcome_status: string;
+}
+
+export interface TasksListResponse {
+  items: TaskListItem[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface TasksListFilters {
+  squad_id?: string;
+  agent_id?: string;
+  status?: TaskStatusType;
+  since?: string;
+  until?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function fetchTasks(
+  clientId: string, filters: TasksListFilters = {},
+): Promise<TasksListResponse> {
+  const params: Record<string, string | number> = {};
+  if (filters.squad_id) params.squad_id = filters.squad_id;
+  if (filters.agent_id) params.agent_id = filters.agent_id;
+  if (filters.status) params.status = filters.status;
+  if (filters.since) params.since = filters.since;
+  if (filters.until) params.until = filters.until;
+  params.limit = filters.limit ?? 50;
+  params.offset = filters.offset ?? 0;
+
+  const { data } = await api.get<TasksListResponse>(
+    '/client/tasks',
+    { params, headers: { 'X-Client-Id': clientId } },
+  );
+  return data;
+}
+
+export interface TaskTimelineEvent {
+  kind: string;
+  timestamp: string;
+  label: string;
+  detail: Record<string, unknown>;
+}
+
+export interface TaskDetailResponse {
+  id: string;
+  squad_id: string;
+  squad_slug: string | null;
+  jira_workspace_url: string;
+  jira_issue_key: string | null;
+  title: string;
+  status: TaskStatusType;
+  current_step: string | null;
+  step_label: string | null;
+  scan_progress: Record<string, unknown>;
+  assigned_agent_id: string | null;
+  pr_url: string | null;
+  anthropic_session_id: string | null;
+  started_at: string | null;
+  closed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  outcome_status: string;
+  outcome_iterations: number;
+  cost_usd: number;
+  api_calls_count: number;
+  timeline: TaskTimelineEvent[];
+}
+
+export async function fetchTaskDetail(
+  clientId: string, taskId: string,
+): Promise<TaskDetailResponse> {
+  const { data } = await api.get<TaskDetailResponse>(
+    `/client/tasks/${taskId}`,
+    { headers: { 'X-Client-Id': clientId } },
+  );
+  return data;
+}
+
+export interface DashboardSummary {
+  in_progress_count: number;
+  completed_this_month: number;
+  completed_last_month: number;
+  cost_this_month: number;
+  cost_last_month: number;
+  active_agents: number;
+  failed_recent: number;
+  recent_activity: TaskListItem[];
+}
+
+export async function fetchDashboardSummary(
+  clientId: string,
+): Promise<DashboardSummary> {
+  const { data } = await api.get<DashboardSummary>(
+    '/client/tasks/dashboard-summary',
+    { headers: { 'X-Client-Id': clientId } },
+  );
+  return data;
+}
+
+
 export interface FinalizeSkillEntry {
   catalog_skill_slug?: string | null;
   draft_to_materialize?: SkillTemplateDraft | null;
