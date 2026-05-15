@@ -487,6 +487,60 @@ export async function fetchJiraIntegration(clientId: string) {
   return data;
 }
 
+// ---- Squad knowledge search (S-8) ----
+
+export interface RetrievalHit {
+  content: string;
+  source_id: string | null;
+  score: number;
+  scope: string;
+  source_quality: string;
+  license: string;
+  source_uri: string | null;
+  stack_version: string | null;
+  collection_slug: string;
+  metadata: Record<string, any>;
+}
+
+export interface RetrievalResponse {
+  hits: RetrievalHit[];
+  total: number;
+}
+
+export async function searchSquadKnowledge(
+  clientId: string,
+  squadId: string,
+  query: string,
+  top_k: number = 10,
+) {
+  const { data } = await api.post<RetrievalResponse>(
+    `/client/squads/${squadId}/retrieval/search`,
+    { query, top_k },
+    { headers: { 'X-Client-Id': clientId } },
+  );
+  return data;
+}
+
+// ---- Client members (S-8 Settings) ----
+
+export interface ClientMember {
+  id: string;
+  email: string;
+  full_name: string;
+  role: string;
+  active: boolean;
+  last_login_at: string | null;
+  membership_id: string;
+  created_at: string;
+}
+
+export async function fetchClientMembers(clientId: string) {
+  const { data } = await api.get<ClientMember[]>('/client/users', {
+    headers: { 'X-Client-Id': clientId },
+  });
+  return data;
+}
+
 // === Agent Runs (LEO-26 / LEO-29) ===
 
 export type RunStatus = 'completed' | 'failed' | 'in_progress';
