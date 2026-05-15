@@ -22,6 +22,7 @@ import SetupReadyPage from '@/pages/SetupReady';
 import TasksListPage from '@/pages/TasksList';
 import TaskDetailPage from '@/pages/TaskDetail';
 import DemandsPage from '@/pages/Demands';
+import SettingsPage from '@/pages/Settings';
 import ComingSoonPage from '@/pages/ComingSoon';
 import { fetchSquadsForClient } from '@/lib/api';
 import { useClientId } from '@/lib/use-client-id';
@@ -316,6 +317,17 @@ export default function App() {
           <ProtectedRoute>
             <RequireSetupComplete>
               <CredentialsWithClient />
+            </RequireSetupComplete>
+          </ProtectedRoute>
+        }
+      />
+      {/* S-8 do redesign — Configuracoes do tenant */}
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <RequireSetupComplete>
+              <SettingsPage />
             </RequireSetupComplete>
           </ProtectedRoute>
         }
