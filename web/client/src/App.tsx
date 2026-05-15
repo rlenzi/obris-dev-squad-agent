@@ -12,7 +12,6 @@ import AgentDetailPage from '@/pages/AgentDetail';
 import AgentRunDetailPage from '@/pages/AgentRunDetail';
 import CredentialsPage from '@/pages/Credentials';
 import CostPage from '@/pages/Cost';
-import SetupPage from '@/pages/Setup';
 import SetupChoicePage from '@/pages/SetupChoice';
 import SetupGreenfieldPlaceholderPage from '@/pages/SetupGreenfieldPlaceholder';
 import SetupExplorePlaceholderPage from '@/pages/SetupExplorePlaceholder';
@@ -100,20 +99,10 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* /setup eh a porta de entrada do redesign (PR-8 switch final).
+          Wizard antigo foi removido. /setup/start mantido como alias. */}
       <Route
         path="/setup"
-        element={
-          <ProtectedRoute>
-            <SetupGate>
-              <SetupPage />
-            </SetupGate>
-          </ProtectedRoute>
-        }
-      />
-      {/* Redesign do onboarding (PR-4 de 8) — tela 0 acessivel direto.
-          O switch final do /setup pra tela 0 acontece no PR-8. */}
-      <Route
-        path="/setup/start"
         element={
           <ProtectedRoute>
             <SetupGate>
@@ -123,6 +112,10 @@ export default function App() {
             </SetupGate>
           </ProtectedRoute>
         }
+      />
+      <Route
+        path="/setup/start"
+        element={<Navigate to="/setup" replace />}
       />
       <Route
         path="/setup/greenfield"
