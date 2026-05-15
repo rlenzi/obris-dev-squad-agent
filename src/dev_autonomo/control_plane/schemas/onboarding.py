@@ -23,17 +23,47 @@ class RunAnalysisResponse(BaseModel):
 
 
 class OnboardingStatusResponse(BaseModel):
-    """GET /client/squads/{id}/onboarding-status."""
+    """GET /client/squads/{id}/onboarding-status.
 
-    task_id: UUID | None
+    A partir do PR-3 do redesign, retorna estado granular da state machine
+    do analyzer v2. Frontend (tela 2 viva) le current_step + step_label
+    + scan_progress pra renderizar etapas, mensagem em primeira pessoa,
+    e barra de progresso quando ha contadores mensuraveis.
+    """
+
+    task_id: UUID | None = None
+    # status "high level" — frontend pode usar pra decidir tela: not_started
+    # vai pra tela 1, in_progress mostra tela 2 viva, completed segue pra 3,
+    # failed mostra erro inline com botao retry.
     status: Literal[
-        "not_started", "pending", "extracting", "analyzing",
-        "proposing", "completed", "failed",
-    ]
-    current_step: str
-    progress_pct: int = Field(ge=0, le=100)
+        "not_started", "in_progress", "completed", "failed", "cancelled",
+    ] = "not_started"
+
+    # Etapa atual da state machine (v2). None enquanto pendente.
+    current_step: str | None = None
+    # Mensagem em prosa primeira pessoa pra mostrar na tela 2.
+    step_label: str | None = None
+
+    # Contadores granulares — schema flexivel (depende da etapa atual).
+    # Pode incluir: total_files, files_processed, chunks_total,
+    # chunks_indexed, oa_iterations, embedding_cost_usd, etc.
+    scan_progress: dict[str, Any] = Field(default_factory=dict)
+
+    # Timestamps
+    started_at: datetime | None = None
     manifest_ready_at: datetime | None = None
+    closed_at: datetime | None = None
+
+    # Mensagem de erro quando status=failed
     error_message: str | None = None
+
+
+class CancelAnalysisResponse(BaseModel):
+    """POST /client/squads/{id}/cancel-onboarding-analysis."""
+
+    task_id: UUID
+    previous_status: str
+    status: Literal["cancelled", "already_finished"]
 
 
 class ManifestResponse(BaseModel):
