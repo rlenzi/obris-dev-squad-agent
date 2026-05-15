@@ -463,6 +463,30 @@ export async function deleteAgent(
   });
 }
 
+// ---- Jira integration (S-7) ----
+
+export interface JiraStageMappingEntry {
+  stage: string;
+  target_status: string;
+  message_preview: string;
+}
+
+export interface JiraIntegration {
+  connected: boolean;
+  workspace_url: string | null;
+  email: string | null;
+  webhook_url: string;
+  stage_mapping: JiraStageMappingEntry[];
+  supported_events: string[];
+}
+
+export async function fetchJiraIntegration(clientId: string) {
+  const { data } = await api.get<JiraIntegration>('/client/jira/integration', {
+    headers: { 'X-Client-Id': clientId },
+  });
+  return data;
+}
+
 // === Agent Runs (LEO-26 / LEO-29) ===
 
 export type RunStatus = 'completed' | 'failed' | 'in_progress';

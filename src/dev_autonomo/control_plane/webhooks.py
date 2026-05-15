@@ -212,6 +212,101 @@ async def github_webhook(
     return {"status": "ignored", "reason": f"event '{event}' nao suportado"}
 
 
+# ---- Jira webhook (S-7 — bidirecional) ----
+
+
+@app.post("/webhooks/jira")
+async def jira_webhook(request: Request) -> dict[str, Any]:
+    """Recebe eventos da Jira Cloud Webhook.
+
+    Eventos suportados:
+    - `comment_created`: anexa comentario humano na timeline da Task local.
+    - `jira:issue_updated` (com transition): registra mudanca de status.
+
+    Outros eventos retornam 200 silencioso pra evitar retry.
+
+    Sem secret validation por enquanto — TODO: adicionar header
+    X-Hub-Signature equivalente via shared secret per-client armazenado
+    em `client.jira_webhook_secret` (precisa migration).
+    """
+    import json
+    body = await request.body()
+    try:
+        payload: dict[str, Any] = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail="invalid JSON"
+        ) from exc
+
+    event_type = payload.get("webhookEvent", "")
+    issue = payload.get("issue") or {}
+    issue_key = issue.get("key")
+    if not issue_key:
+        return {"status": "ignored", "reason": "no issue key"}
+
+    # Jira Cloud manda issue.self que e a URL absoluta. Derivar workspace.
+    issue_self = issue.get("self", "")
+    # ex: https://acme.atlassian.net/rest/api/2/issue/10001
+    workspace_url = ""
+    if issue_self:
+        # tudo antes de /rest
+        idx = issue_self.find("/rest/")
+        if idx > 0:
+            workspace_url = issue_self[:idx]
+
+    from dev_autonomo.services import jira_sync
+
+    async for session in get_session():
+        task = await jira_sync.find_task_by_jira_key(
+            session,
+            workspace_url=workspace_url,
+            issue_key=issue_key,
+        )
+        if task is None:
+            return {"status": "ignored", "reason": "task not in dev-autonomo"}
+
+        if event_type == "comment_created":
+            comment = payload.get("comment") or {}
+            author = (comment.get("author") or {}).get("displayName", "?")
+            body_text = comment.get("body", "")
+            if isinstance(body_text, dict):
+                # ADF — extrair texto plano (best-effort)
+                from dev_autonomo.mcp_clients.jira_client import _adf_to_text
+                body_text = _adf_to_text(body_text)
+            await jira_sync.record_inbound_event(
+                session, task,
+                kind="comment", author=author, body=body_text,
+            )
+            await session.commit()
+            return {"status": "recorded", "kind": "comment"}
+
+        if event_type in ("jira:issue_updated", "issue_updated"):
+            changelog = payload.get("changelog") or {}
+            items = changelog.get("items") or []
+            status_change = next(
+                (it for it in items if it.get("field") == "status"),
+                None,
+            )
+            if status_change is None:
+                return {"status": "ignored", "reason": "no status change"}
+            from_st = status_change.get("fromString", "?")
+            to_st = status_change.get("toString", "?")
+            author_obj = payload.get("user") or {}
+            author = author_obj.get("displayName", "?")
+            await jira_sync.record_inbound_event(
+                session, task,
+                kind="transition",
+                author=author,
+                body=f"{from_st} → {to_st}",
+            )
+            await session.commit()
+            return {"status": "recorded", "kind": "transition", "to": to_st}
+
+        return {"status": "ignored", "reason": f"event '{event_type}' nao suportado"}
+
+    return {"status": "ignored", "reason": "no session"}
+
+
 async def _resolve_squad_stack(session, squad_id) -> str | None:
     """Resolve stack_slug a partir da squad — V1: hardcoded por slug; V2 via
     manifest detectado pelo OA."""

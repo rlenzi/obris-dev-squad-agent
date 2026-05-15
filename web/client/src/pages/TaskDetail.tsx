@@ -13,6 +13,14 @@ import { formatApiError } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 
+interface JiraEvent {
+  ts: string;
+  kind: string;
+  author: string;
+  body: string;
+}
+
+
 /**
  * Detalhe de uma task (D-05 — versão S-2).
  *
@@ -154,6 +162,27 @@ export default function TaskDetailPage() {
         )}
       </section>
 
+      {/* S-7: eventos vindos do Jira via webhook bidirecional */}
+      {(t.scan_progress?.jira_events as JiraEvent[] | undefined)?.length ? (
+        <section className="space-y-2">
+          <h2 className="text-sm font-medium">Comentários do Jira</h2>
+          <ol className="space-y-2">
+            {(t.scan_progress!.jira_events as JiraEvent[]).slice().reverse().map((ev, i) => (
+              <li key={i} className="rounded-md border bg-muted/10 px-3 py-2 text-sm">
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">{ev.author}</span>
+                  {' · '}
+                  {ev.kind === 'transition' ? 'mudou status' : 'comentou'}
+                  {' · '}
+                  {new Date(ev.ts).toLocaleString('pt-BR')}
+                </p>
+                <p className="mt-1 whitespace-pre-wrap">{ev.body}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+
       {t.scan_progress && Object.keys(t.scan_progress).length > 0 && (
         <section className="space-y-2">
           <h2 className="text-sm font-medium">Detalhes da execução</h2>
@@ -162,14 +191,6 @@ export default function TaskDetailPage() {
           </div>
         </section>
       )}
-
-      <section className="border-t pt-4">
-        <p className="text-xs text-muted-foreground">
-          💡 Adicionar instrução em prosa, comentários do Jira inline e
-          decisão de aprovação/rejeição inline chegam quando S-7 (integração
-          Jira bidirecional) for implementado.
-        </p>
-      </section>
     </div>
   );
 }
