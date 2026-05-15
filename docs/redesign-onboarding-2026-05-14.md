@@ -460,12 +460,36 @@ Os PRs A-H do roadmap stack-knowledge (mergeados em 2026-05-14) implementam uma 
 - #88 — wizard exige ≥1 repo no Manifesto — **será removido**, manifest é derivado
 - #89 — normalize enums `api_call_kind`/`api_provider` pra lowercase
 
-**Próximo passo de implementação** (a alinhar com Rubens):
-1. Tela 0 (porta) — frontend novo
-2. Tela 1 (cola repo + token JIT) — frontend novo + endpoint check repo privado
-3. Tela 2 (análise viva) — backend significativo: reescrever `onboarding_analyzer` pra emitir progress real (5 etapas com sub-progresso), indexar RAG da squad durante a análise (hoje não faz)
-4. Tela 3 (resultado) — frontend novo + backend: relatório em prosa derivado da análise, diagrama de fluxo, modal adicionar agente com stacks
-5. Tela 4 (squad ativa) — frontend novo com 3 cards de next steps
+**Implementação do cenário A — CONCLUÍDA em 2026-05-15.**
+
+8 PRs sequenciais mergeados na main:
+
+| PR | Sha | Entrega |
+|---|---|---|
+| 1 | `268d55c` | Endpoint `GET /client/github/repo-status` |
+| 2 | `71169c4` | Entidade `Stack` persistente + CRUD |
+| 3 | `f84bce8` | **Cérebro novo do OA** — 6 etapas + RAG ingest + grader Haiku |
+| 4 | `b98b31c` | Tela 0 — porta de entrada (3 cards) |
+| 5 | `0080d4d` | Tela 1 — cola URL + token JIT + debounce |
+| 6 | `9194be0` | Tela 2 — análise viva com state granular |
+| 7 | `96d7db8` | Tela 3 — relatório + agentes + diagrama + Jira inline + Tela 4 base |
+| 8 | (este PR) | Switch final: `/setup` → tela 0, remove wizard antigo, Tela 4 polida |
+
+### Itens NÃO incluídos nos 8 PRs (TODO pós-implementação)
+
+Documentados explicitamente pra não sumirem:
+
+- **Modal "Editar prompt"** do agente (botão visível mas disabled na Tela 3 com tooltip)
+- **Modal "Adicionar agente do catálogo"** (não habilitado na Tela 3)
+- **Configuração detalhada de stack pra Dev paramétrico** — `catalog_skill_slug` deriva por slug literal; integração completa com Bloco D fica pra PR futuro
+- **Caso de erro parcial na Tela 4** — botão "tentar provisionar agents faltantes" sem refazer setup
+- **Cenário B (greenfield)** — caminho completo (continua placeholder em `/setup/greenfield`)
+- **Cenário C (explorando)** — tour/demo (continua placeholder em `/setup/explore`)
+- **Painel da squad** com seções stacks/repos/agentes/cross-squad
+- **Fluxo "adicionar outro repositório"** pós-setup em modo delta
+- **Sweeper job de clones órfãos** > 24h (operacional)
+- **AST chunking** — hoje usa sliding window (universal). AST melhora qualidade pra Python/TS/JS quando volume justificar.
+- **Smokes pra pytest async** — hoje são scripts standalone em `tests/onboarding/`
 
 ---
 
