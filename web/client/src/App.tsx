@@ -17,7 +17,7 @@ import SetupChoicePage from '@/pages/SetupChoice';
 import SetupGreenfieldPlaceholderPage from '@/pages/SetupGreenfieldPlaceholder';
 import SetupExplorePlaceholderPage from '@/pages/SetupExplorePlaceholder';
 import SetupRepositoryPage from '@/pages/SetupRepository';
-import SetupAnalyzingPlaceholderPage from '@/pages/SetupAnalyzingPlaceholder';
+import SetupAnalyzingPage from '@/pages/SetupAnalyzing';
 import ComingSoonPage from '@/pages/ComingSoon';
 import { fetchSquadsForClient } from '@/lib/api';
 import { useClientId } from '@/lib/use-client-id';
@@ -166,7 +166,7 @@ export default function App() {
         element={
           <ProtectedRoute>
             <div className="min-h-screen bg-background">
-              <SetupAnalyzingPlaceholderPage />
+              <SetupAnalyzingPage />
             </div>
           </ProtectedRoute>
         }

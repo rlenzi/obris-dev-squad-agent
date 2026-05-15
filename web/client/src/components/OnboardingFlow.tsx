@@ -61,9 +61,7 @@ export default function OnboardingFlow({
 
   const status = statusQuery.data;
 
-  if (!status || status.status === 'pending' || status.status === 'not_started' ||
-      status.status === 'extracting' || status.status === 'analyzing' ||
-      status.status === 'proposing') {
+  if (!status || status.status === 'not_started' || status.status === 'in_progress') {
     return (
       <ProgressView
         status={status}
@@ -151,15 +149,9 @@ function ProgressView({
           })}
         </div>
 
-        {status && (
+        {status && status.step_label && (
           <div className="rounded-md border border-border bg-muted/30 p-3 text-xs">
-            <div>Progresso: {status.progress_pct}%</div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full bg-brand-500 transition-all"
-                style={{ width: `${status.progress_pct}%` }}
-              />
-            </div>
+            <div>{status.step_label}</div>
           </div>
         )}
 

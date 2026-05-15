@@ -723,17 +723,68 @@ export async function deleteSquadKnowledgeSource(
 // Onboarding analysis + skill proposer (Bloco E)
 // =============================================================================
 
+// OnboardingStatusResponse v2 (PR-3 do redesign).
+// Backend retorna estado granular da state machine do analyzer v2.
 export type OnboardingStatus =
-  | 'not_started' | 'pending' | 'extracting' | 'analyzing'
-  | 'proposing' | 'completed' | 'failed';
+  | 'not_started' | 'in_progress' | 'completed' | 'failed' | 'cancelled';
+
+// Nome curto da etapa atual. Bate com STEP_LABELS do backend.
+export type OnboardingStep =
+  | 'cloning' | 'scanning' | 'oa_scanning'
+  | 'indexing' | 'finalizing' | 'grading'
+  | 'completed' | 'failed' | 'cancelled';
+
+export interface OnboardingScanProgress {
+  // Contadores granulares — schema flexivel, depende da etapa atual.
+  started_at?: string;
+  total_files?: number;
+  files_excluded?: number;
+  files_processed?: number;
+  files_indexed?: number;
+  chunks_total?: number;
+  chunks_indexed?: number;
+  chunks_estimated?: number;
+  clone_size_bytes?: number;
+  embedding_cost_usd?: string;
+  oa_iterations?: number;
+  stacks_detected?: number;
+  agents_recommended?: number;
+  completed_at?: string;
+  failed_at?: string;
+  failure_reason?: string;
+  cancelled_at?: string;
+  // Aceita campos extras desconhecidos
+  [key: string]: unknown;
+}
 
 export interface OnboardingStatusResponse {
   task_id: string | null;
   status: OnboardingStatus;
-  current_step: string;
-  progress_pct: number;
+  current_step: OnboardingStep | string | null;
+  step_label: string | null;
+  scan_progress: OnboardingScanProgress;
+  started_at: string | null;
   manifest_ready_at: string | null;
+  closed_at: string | null;
   error_message: string | null;
+}
+
+export interface CancelAnalysisResponse {
+  task_id: string;
+  previous_status: string;
+  status: 'cancelled' | 'already_finished';
+}
+
+export async function cancelOnboardingAnalysis(
+  clientId: string,
+  squadId: string,
+): Promise<CancelAnalysisResponse> {
+  const { data } = await api.post<CancelAnalysisResponse>(
+    `/client/squads/${squadId}/cancel-onboarding-analysis`,
+    {},
+    { headers: { 'X-Client-Id': clientId } },
+  );
+  return data;
 }
 
 export interface SkillTemplateDraft {
