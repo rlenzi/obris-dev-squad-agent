@@ -43,13 +43,19 @@ interface StepDefinition {
   title: string;
 }
 
-const STEPS: StepDefinition[] = [
+const STEPS_REPO: StepDefinition[] = [
   { key: 'cloning', title: 'Clonando repositório' },
   { key: 'scanning', title: 'Escaneando arquivos' },
   { key: 'oa_scanning', title: 'Analisando código com IA' },
   { key: 'indexing', title: 'Indexando conhecimento na RAG da squad' },
   { key: 'finalizing', title: 'Finalizando' },
   { key: 'grading', title: 'Verificando qualidade da análise' },
+];
+
+const STEPS_GREENFIELD: StepDefinition[] = [
+  { key: 'indexing_materials' as OnboardingStep, title: 'Indexando materiais que você subiu' },
+  { key: 'proposing_stack' as OnboardingStep, title: 'Pensando na stack ideal pro que você descreveu' },
+  { key: 'defining_agents' as OnboardingStep, title: 'Definindo agentes' },
 ];
 
 const POLL_INTERVAL_MS = 2000;
@@ -129,23 +135,32 @@ export default function SetupAnalyzingPage() {
   }
 
   const data = statusQuery.data;
-  const currentIndex = stepIndexOf(data.current_step);
+  // Detecta modo (greenfield vs repo) pelo scan_progress.mode
+  const isGreenfield = data.scan_progress?.mode === 'greenfield';
+  const STEPS = isGreenfield ? STEPS_GREENFIELD : STEPS_REPO;
+
+  const currentIndex = stepIndexOf(STEPS, data.current_step);
   const terminal =
     data.status === 'completed' ||
     data.status === 'failed' ||
     data.status === 'cancelled';
 
+  const titleByStatus =
+    data.status === 'completed'
+      ? 'Análise concluída ✓'
+      : data.status === 'failed'
+        ? 'Análise falhou'
+        : data.status === 'cancelled'
+          ? 'Análise cancelada'
+          : isGreenfield
+            ? 'Pensando no seu projeto'
+            : 'Analisando seu código';
+
   return (
     <div className="mx-auto max-w-2xl py-12 px-6">
       <header className="mb-8 space-y-2">
         <h1 className="text-2xl font-semibold tracking-tight">
-          {data.status === 'completed'
-            ? 'Análise concluída ✓'
-            : data.status === 'failed'
-              ? 'Análise falhou'
-              : data.status === 'cancelled'
-                ? 'Análise cancelada'
-                : 'Analisando seu código'}
+          {titleByStatus}
         </h1>
         {!terminal && (
           <p className="text-sm text-muted-foreground">
@@ -271,9 +286,12 @@ export default function SetupAnalyzingPage() {
 type StepState = 'done' | 'active' | 'pending' | 'failed';
 
 
-function stepIndexOf(currentStep: string | null | undefined): number {
+function stepIndexOf(
+  steps: StepDefinition[],
+  currentStep: string | null | undefined,
+): number {
   if (!currentStep) return -1;
-  return STEPS.findIndex((s) => s.key === currentStep);
+  return steps.findIndex((s) => s.key === currentStep);
 }
 
 

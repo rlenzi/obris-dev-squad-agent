@@ -98,6 +98,22 @@ STEP_LABELS: dict[str, str] = {
         "Pedindo uma segunda opinião antes de finalizar — um avaliador "
         "independente vai conferir que cobri o suficiente do seu código."
     ),
+    # Steps específicos do cenário B (greenfield, sem código)
+    "indexing_materials": (
+        "Estou indexando os materiais que você subiu pra alimentar a base "
+        "de conhecimento da sua squad. Quanto mais contexto, melhor os "
+        "agentes vão trabalhar."
+    ),
+    "proposing_stack": (
+        "Estou lendo sua descrição com calma e cruzando com o que entendi "
+        "dos materiais. Vou propor uma stack que faça sentido pro tamanho "
+        "e ambição do projeto — você pode trocar tudo se quiser na "
+        "próxima tela."
+    ),
+    "defining_agents": (
+        "Com base na stack que propus, estou pensando quais agentes fazem "
+        "sentido pra sua squad."
+    ),
 }
 
 
@@ -193,6 +209,321 @@ async def start_analysis(
         github_token=github_token,
     ))
     return task_id
+
+
+# ---------------------------------------------------------------------------
+# Cenário B — Greenfield (S-1 do redesign)
+# ---------------------------------------------------------------------------
+
+
+async def start_greenfield_analysis(
+    session: AsyncSession,
+    *,
+    client: Client,
+    squad: Squad,
+    description: str,
+) -> UUID:
+    """Dispara análise greenfield (cenário B) em background.
+
+    Cliente descreveu o projeto em texto livre + (opcionalmente) subiu
+    materiais de referência via /onboarding/materials. Esta função:
+    - cria Task com state machine 3-etapas
+    - dispara background que indexa materiais (se houver), chama Claude
+      pra propor stack/agentes, persiste
+
+    NÃO tem clone/scan de código — esse é o diferencial vs start_analysis.
+    """
+    if not description or len(description.strip()) < 50:
+        raise ValueError(
+            "descrição precisa de ao menos 50 caracteres pro Claude "
+            "ter contexto suficiente",
+        )
+
+    existing = await _find_active_onboarding_task(session, squad.id)
+    if existing is not None:
+        return existing.id
+
+    task = Task(
+        client_id=client.id,
+        squad_id=squad.id,
+        jira_workspace_url=client.jira_workspace_url or "",
+        jira_issue_key=f"ONBOARDING-{squad.id}",
+        title=f"{_ONBOARDING_TASK_TITLE_PREFIX} {squad.slug} (greenfield)",
+        current_stage=TaskStage.DEMAND_RECEIVED,
+        status=TaskStatus.IN_PROGRESS,
+        outcome_status=OutcomeStatus.PENDING,
+        current_step=None,
+        step_label=None,
+        scan_progress={
+            "started_at": datetime.now(tz=timezone.utc).isoformat(),
+            "mode": "greenfield",
+        },
+    )
+    session.add(task)
+    await session.flush()
+    task_id = task.id
+    await session.commit()
+
+    asyncio.create_task(_run_greenfield_in_background(
+        task_id=task_id,
+        client_id=client.id,
+        client_name=client.name,
+        squad_id=squad.id,
+        squad_slug=squad.slug,
+        squad_name=squad.name,
+        description=description.strip(),
+    ))
+    return task_id
+
+
+async def _run_greenfield_in_background(
+    *,
+    task_id: UUID,
+    client_id: UUID,
+    client_name: str,
+    squad_id: UUID,
+    squad_slug: str,
+    squad_name: str,
+    description: str,
+) -> None:
+    """Orquestrador das 3 etapas do greenfield. Mesma disciplina do
+    cenário A: nunca propaga exception sem registrar status no DB."""
+    try:
+        # Etapa 1: indexar materiais (se houver)
+        await _update_step(task_id, "indexing_materials")
+        if await _check_cancelled(task_id):
+            return
+        materials_count = await _count_greenfield_materials(squad_id)
+        await _patch_scan_progress(task_id, {
+            "materials_count": materials_count,
+        })
+
+        # Etapa 2: propor stack via Claude
+        await _update_step(task_id, "proposing_stack")
+        if await _check_cancelled(task_id):
+            return
+        oa_output = await _propose_via_claude(
+            task_id=task_id, client_id=client_id, squad_id=squad_id,
+            squad_name=squad_name, client_name=client_name,
+            description=description,
+        )
+        if oa_output is None:
+            return  # já marcou falha
+
+        # Etapa 3: definir agentes (já parte do output Claude — atualiza UI)
+        await _update_step(task_id, "defining_agents")
+        await _patch_scan_progress(task_id, {
+            "stacks_proposed": len(oa_output.stacks),
+            "agents_recommended": len(oa_output.recommended_agents),
+        })
+
+        # Persistir
+        async with session_scope() as session:
+            await _persist_stacks(session, client_id, squad_id, oa_output.stacks)
+            await _save_manifest(
+                session, client_id, squad_id, oa_output,
+                clone_metadata={
+                    "mode": "greenfield",
+                    "description": description,
+                    "materials_count": materials_count,
+                },
+            )
+            await session.commit()
+
+        await _mark_completed(task_id, oa_output)
+        logger.info(
+            "greenfield: análise concluída task=%s stacks=%d",
+            task_id, len(oa_output.stacks),
+        )
+
+    except Exception as exc:
+        logger.exception("greenfield: erro inesperado task=%s", task_id)
+        await _mark_failed(task_id, f"unexpected_error: {type(exc).__name__}: {exc}")
+
+
+async def _count_greenfield_materials(squad_id: UUID) -> int:
+    """Conta materiais (rag_sources) já indexados pra essa squad."""
+    from dev_autonomo.db.models import RagSource
+    async with session_scope() as session:
+        result = await session.execute(
+            select(RagSource).where(
+                RagSource.squad_id == squad_id,
+            )
+        )
+        return len(list(result.scalars().all()))
+
+
+async def _propose_via_claude(
+    *,
+    task_id: UUID,
+    client_id: UUID,
+    squad_id: UUID,
+    squad_name: str,
+    client_name: str,
+    description: str,
+) -> OnboardingAnalysisOutput | None:
+    """Chama Claude (Opus) pra propor stack + agentes baseado em descrição."""
+    import anthropic
+    from decimal import Decimal as _D
+
+    settings = get_settings()
+    client = anthropic.Anthropic(
+        api_key=settings.ANTHROPIC_API_KEY.get_secret_value()
+    )
+
+    prompt = _build_greenfield_prompt(
+        description=description, client_name=client_name, squad_name=squad_name,
+    )
+
+    try:
+        resp = client.messages.create(
+            model="claude-opus-4-7",
+            max_tokens=8192,
+            system=_GREENFIELD_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except Exception as exc:
+        logger.exception("greenfield: claude falhou task=%s", task_id)
+        await _mark_failed(task_id, f"claude_failed: {exc}")
+        return None
+
+    raw_text = ""
+    for block in resp.content:
+        if getattr(block, "type", "") == "text":
+            raw_text = block.text  # type: ignore[attr-defined]
+            break
+
+    if not raw_text:
+        await _mark_failed(task_id, "claude_returned_empty")
+        return None
+
+    try:
+        oa_output = _parse_oa_json_output(raw_text)
+    except (json.JSONDecodeError, ValidationError) as exc:
+        await _mark_failed(task_id, f"claude_invalid_json: {exc}")
+        return None
+
+    # Registra custo
+    try:
+        from dev_autonomo.common.claude_pricing import get_pricing
+        from dev_autonomo.common.enums import ApiCallKind, ApiProvider
+        from dev_autonomo.db.models.cost import ExternalApiCall
+        pricing = get_pricing("claude-opus-4-7", provider="anthropic")
+        cost = pricing.cost_usd(
+            input_tokens=resp.usage.input_tokens,
+            output_tokens=resp.usage.output_tokens,
+            cache_read_tokens=0, cache_write_tokens=0,
+        )
+        async with session_scope() as session:
+            call = ExternalApiCall(
+                client_id=client_id, task_id=task_id,
+                provider=ApiProvider.ANTHROPIC, kind=ApiCallKind.CHAT,
+                model="claude-opus-4-7",
+                input_tokens=resp.usage.input_tokens,
+                output_tokens=resp.usage.output_tokens,
+                cost_usd=cost,
+            )
+            session.add(call)
+            await session.commit()
+    except Exception:
+        logger.warning("greenfield: falha ao registrar custo (continua)")
+
+    return oa_output
+
+
+_GREENFIELD_SYSTEM_PROMPT = """Você é o Onboarding Analyst em modo greenfield — cliente está começando um projeto do zero e descreveu em texto livre o que quer construir.
+
+# Sua missão
+
+Receber a descrição do cliente e propor:
+- Stacks adequadas pro tamanho e ambição do projeto (não over-engineering, não under)
+- Agentes adequados pra squad (BA + Architect + ≥1 Dev por stack + Reviewer)
+- Convenções sugeridas pra cada stack (best practices)
+
+# Princípios
+
+1. **Pragmatismo.** Cliente disse "SaaS de gestão pra psicólogos"? Não recomende microsserviços + Kafka. Recomende o stack enxuto que cresce bem.
+2. **Honesto.** Se a descrição está vaga, deixe explícito no summary. Não invente requisitos.
+3. **Schema rígido.** Output é JSON validado por Pydantic.
+
+# Diferenças vs modo normal (com código existente)
+
+- Stacks são PROPOSTAS (não detectadas). Cliente pode trocar.
+- NÃO inclua `anti_patterns_detected` — sem código, sem padrão problemático.
+- Em `paths`, use caminhos sugeridos (`src/`, `web/client/`, etc.) que o cliente pode adotar no scaffold.
+
+# Estrutura de saída obrigatória
+
+```json
+{
+  "summary": "Prosa em primeira pessoa, ~5-8 frases descrevendo o que você entendeu da descrição + materiais e justificando a stack proposta.",
+  "stacks": [
+    {
+      "slug": "kebab-case-lowercase",
+      "name": "Display name humano",
+      "paths": ["src/"],
+      "framework": "fastapi",
+      "framework_version": "0.115.0",
+      "conventions": {
+        "observed_patterns": {
+          "testing": "frase substantiva sobre o que você sugere observar",
+          "naming": "...",
+          "imports": "...",
+          "error_handling": "...",
+          "commits": "..."
+        },
+        "recommended_for_agents": {
+          "testing": "diretriz prescritiva pra agente",
+          "naming": "...",
+          "imports": "...",
+          "error_handling": "...",
+          "commits": "..."
+        }
+      }
+    }
+  ],
+  "jira_projects": [],
+  "anti_patterns_detected": [],
+  "recommended_agents": [
+    {
+      "tier": "ba|architect|dev|reviewer",
+      "stack_slug": "<obrigatório pra dev>",
+      "rationale": "..."
+    }
+  ],
+  "tool_calls_summary": {
+    "file_reads": 0,
+    "bash_commands": 0,
+    "grep_searches": 0,
+    "glob_searches": 0,
+    "git_log_called": false,
+    "git_log_max_count": 0
+  }
+}
+```
+
+# IMPORTANTE
+
+- Responda APENAS com o JSON. Sem prosa antes/depois. Sem markdown fence.
+- Architect + ao menos 1 Dev em recommended_agents.
+- Cada Dev tem stack_slug.
+- jira_projects sempre vazio (cliente não tem projeto Jira ainda — cenário greenfield).
+- anti_patterns_detected sempre vazio (não tem código).
+"""
+
+
+def _build_greenfield_prompt(
+    *, description: str, client_name: str, squad_name: str,
+) -> str:
+    return (
+        f"Cliente: **{client_name}**\n"
+        f"Squad: **{squad_name}**\n\n"
+        f"# Descrição do projeto (texto livre do cliente)\n\n"
+        f"{description}\n\n"
+        f"Produza o JSON estruturado conforme o schema do system prompt. "
+        f"Stacks são PROPOSTAS (não detectadas), pragmatismo > over-engineering, "
+        f"sem anti_patterns, sem jira_projects."
+    )
 
 
 async def _find_active_onboarding_task(
