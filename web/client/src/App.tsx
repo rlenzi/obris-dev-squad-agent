@@ -82,6 +82,10 @@ function SetupGate({ children }: { children: ReactNode }) {
     enabled: Boolean(clientId),
   });
 
+  // S-5: ?new=1 permite acessar /setup mesmo com squad existente
+  // (fluxo "criar 2ª/3ª squad")
+  const allowNew = new URLSearchParams(window.location.search).has('new');
+
   if (squadsQuery.isLoading) {
     return (
       <div className="min-h-screen grid place-items-center text-muted-foreground">
@@ -89,7 +93,7 @@ function SetupGate({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  if ((squadsQuery.data ?? []).length > 0) {
+  if ((squadsQuery.data ?? []).length > 0 && !allowNew) {
     return <Navigate to="/dashboard" replace />;
   }
   return (

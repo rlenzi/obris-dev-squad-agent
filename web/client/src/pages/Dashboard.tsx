@@ -205,7 +205,7 @@ export default function DashboardPage() {
         >
           {squads.length === 1 ? 'Abrir minha squad' : 'Ver squads'}
         </Button>
-        <Button variant="outline" onClick={() => navigate('/setup')}>
+        <Button variant="outline" onClick={() => navigate('/setup?new=1')}>
           <Plus className="mr-2 h-4 w-4" />
           Nova squad
         </Button>
