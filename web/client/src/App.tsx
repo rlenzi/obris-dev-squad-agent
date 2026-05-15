@@ -18,6 +18,8 @@ import SetupGreenfieldPlaceholderPage from '@/pages/SetupGreenfieldPlaceholder';
 import SetupExplorePlaceholderPage from '@/pages/SetupExplorePlaceholder';
 import SetupRepositoryPage from '@/pages/SetupRepository';
 import SetupAnalyzingPage from '@/pages/SetupAnalyzing';
+import SetupResultPage from '@/pages/SetupResult';
+import SetupReadyPage from '@/pages/SetupReady';
 import ComingSoonPage from '@/pages/ComingSoon';
 import { fetchSquadsForClient } from '@/lib/api';
 import { useClientId } from '@/lib/use-client-id';
@@ -167,6 +169,28 @@ export default function App() {
           <ProtectedRoute>
             <div className="min-h-screen bg-background">
               <SetupAnalyzingPage />
+            </div>
+          </ProtectedRoute>
+        }
+      />
+      {/* PR-7 do redesign — Tela 3 (resultado + agentes) */}
+      <Route
+        path="/setup/result/:squadId"
+        element={
+          <ProtectedRoute>
+            <div className="min-h-screen bg-background">
+              <SetupResultPage />
+            </div>
+          </ProtectedRoute>
+        }
+      />
+      {/* Tela 4 (squad ativa) — destino do botão Ativar. */}
+      <Route
+        path="/setup/ready/:squadId"
+        element={
+          <ProtectedRoute>
+            <div className="min-h-screen bg-background">
+              <SetupReadyPage />
             </div>
           </ProtectedRoute>
         }
