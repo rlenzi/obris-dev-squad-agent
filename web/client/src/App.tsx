@@ -16,6 +16,8 @@ import SetupPage from '@/pages/Setup';
 import SetupChoicePage from '@/pages/SetupChoice';
 import SetupGreenfieldPlaceholderPage from '@/pages/SetupGreenfieldPlaceholder';
 import SetupExplorePlaceholderPage from '@/pages/SetupExplorePlaceholder';
+import SetupRepositoryPage from '@/pages/SetupRepository';
+import SetupAnalyzingPlaceholderPage from '@/pages/SetupAnalyzingPlaceholder';
 import ComingSoonPage from '@/pages/ComingSoon';
 import { fetchSquadsForClient } from '@/lib/api';
 import { useClientId } from '@/lib/use-client-id';
@@ -141,6 +143,31 @@ export default function App() {
                 <SetupExplorePlaceholderPage />
               </div>
             </SetupGate>
+          </ProtectedRoute>
+        }
+      />
+      {/* PR-5 do redesign — Tela 1 */}
+      <Route
+        path="/setup/repository"
+        element={
+          <ProtectedRoute>
+            <SetupGate>
+              <div className="min-h-screen bg-background">
+                <SetupRepositoryPage />
+              </div>
+            </SetupGate>
+          </ProtectedRoute>
+        }
+      />
+      {/* Placeholder Tela 2 (PR-6 implementa) — fora do SetupGate porque
+          ja existe squad e o gate redirecionaria pra /dashboard */}
+      <Route
+        path="/setup/analyzing/:squadId"
+        element={
+          <ProtectedRoute>
+            <div className="min-h-screen bg-background">
+              <SetupAnalyzingPlaceholderPage />
+            </div>
           </ProtectedRoute>
         }
       />

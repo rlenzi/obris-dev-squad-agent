@@ -50,7 +50,7 @@ export default function SetupChoicePage() {
             'os agentes certos.'
           }
           duration="~10 min"
-          onClick={() => navigate('/setup')}
+          onClick={() => navigate('/setup/repository')}
         />
         <ChoiceCard
           icon={<Sparkles className="h-6 w-6" />}
