@@ -1,18 +1,21 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  ArrowLeft, Bot, Code2, GitBranch, Plus,
+  ArrowLeft, Bot, Code2, GitBranch, Pencil, Plus, Trash2,
 } from 'lucide-react';
 import {
   api,
   createAgent,
+  deleteAgent,
   fetchAgents,
   fetchClient,
   fetchManifest,
+  fetchSkillTemplate,
   fetchSkillTemplates,
   fetchSquad,
   fetchTasks,
+  updateAgentPrompt,
   type AgentInstance,
   type AgentInstanceCreate,
   type ManifestContent,
@@ -531,20 +534,302 @@ function AgentsList({ clientId, squad }: { clientId: string; squad: Squad }) {
       ) : (
         <div className="grid gap-3">
           {agentsQuery.data?.map((a: AgentInstance) => (
-            <Card key={a.id}>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2">
-                  <Bot className="size-4 text-muted-foreground" />
-                  <span className="font-medium">{a.name}</span>
-                  {a.domain_business && (
-                    <Badge variant="muted">{a.domain_business}</Badge>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            <AgentCard
+              key={a.id}
+              clientId={clientId}
+              squadId={squad.id}
+              agent={a}
+            />
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+
+// ---- Agent card com modais Editar prompt + Remover (S-6) ----
+
+function AgentCard({
+  clientId, squadId, agent,
+}: { clientId: string; squadId: string; agent: AgentInstance }) {
+  const queryClient = useQueryClient();
+  const [openEdit, setOpenEdit] = useState(false);
+  const [openDelete, setOpenDelete] = useState(false);
+
+  const skillQuery = useQuery({
+    queryKey: ['skill-template', agent.skill_template_id],
+    queryFn: () => fetchSkillTemplate(agent.skill_template_id),
+  });
+  const skill = skillQuery.data;
+
+  const isCustomized = Boolean(agent.config_overrides?.system_prompt_custom_at);
+  const isDisabled = agent.status === 'disabled';
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteAgent(clientId, squadId, agent.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents', clientId, squadId] });
+      setOpenDelete(false);
+    },
+  });
+
+  return (
+    <Card className={isDisabled ? 'opacity-50' : ''}>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Bot className="size-4 text-muted-foreground shrink-0" />
+            <span className="font-medium truncate">{agent.name}</span>
+            {skill && (
+              <Badge variant="outline" className="shrink-0">
+                {skill.tier}
+              </Badge>
+            )}
+            {agent.domain_business && (
+              <Badge variant="muted" className="shrink-0">
+                {agent.domain_business}
+              </Badge>
+            )}
+            {isCustomized && (
+              <Badge variant="success" className="shrink-0">
+                Personalizado
+              </Badge>
+            )}
+            {isDisabled && (
+              <Badge variant="muted" className="shrink-0">
+                Removido
+              </Badge>
+            )}
+          </div>
+          {!isDisabled && (
+            <div className="flex items-center gap-1 shrink-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setOpenEdit(true)}
+                title="Editar prompt"
+              >
+                <Pencil className="size-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setOpenDelete(true)}
+                title="Remover agente"
+              >
+                <Trash2 className="size-3.5 text-destructive" />
+              </Button>
+            </div>
+          )}
+        </div>
+        {skill && (
+          <p className="mt-1.5 text-xs text-muted-foreground font-mono">
+            {skill.slug} · v{skill.version} · {skill.model_alias}
+          </p>
+        )}
+      </CardContent>
+
+      {openEdit && skill && (
+        <EditPromptDialog
+          clientId={clientId}
+          squadId={squadId}
+          agent={agent}
+          skill={skill}
+          onClose={() => setOpenEdit(false)}
+          onSaved={() => {
+            queryClient.invalidateQueries({ queryKey: ['agents', clientId, squadId] });
+            setOpenEdit(false);
+          }}
+        />
+      )}
+
+      {openDelete && (
+        <Dialog open={openDelete} onOpenChange={setOpenDelete}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Remover {agent.name}?</DialogTitle>
+              <DialogDescription>
+                {deleteConsequenceText(skill?.tier)}
+              </DialogDescription>
+            </DialogHeader>
+            {deleteMutation.error && (
+              <p className="text-xs text-destructive">
+                {formatApiError(deleteMutation.error, 'Falha ao remover agente.')}
+              </p>
+            )}
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setOpenDelete(false)}
+                disabled={deleteMutation.isPending}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => deleteMutation.mutate()}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? 'Removendo…' : 'Remover'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </Card>
+  );
+}
+
+
+function deleteConsequenceText(tier: string | undefined): string {
+  switch (tier) {
+    case 'ba':
+      return (
+        'Sem BA, demandas chegam direto ao Architect sem refinamento ' +
+        'estruturado. Demandas vagas terão menos contexto antes do plano.'
+      );
+    case 'reviewer':
+      return (
+        'Sem Reviewer, os PRs abertos pelos Devs ficam direto pra revisão ' +
+        'humana — sem segunda passada de checagem automática.'
+      );
+    case 'architect':
+      return (
+        'Architect é obrigatório. Só será possível remover se houver outro ' +
+        'Architect ativo na squad — caso contrário o pipeline trava.'
+      );
+    case 'dev':
+      return (
+        'Dev é obrigatório (≥1 por squad). Só será possível remover se houver ' +
+        'outro Dev ativo. O agente é desativado, não apagado — pode ser ' +
+        'reativado depois.'
+      );
+    default:
+      return 'O agente será desativado (não apagado). Pode ser reativado depois.';
+  }
+}
+
+
+// ---- Editar prompt dialog ----
+
+function EditPromptDialog({
+  clientId, squadId, agent, skill, onClose, onSaved,
+}: {
+  clientId: string;
+  squadId: string;
+  agent: AgentInstance;
+  skill: SkillTemplate;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [systemPrompt, setSystemPrompt] = useState('');
+  const [modelAlias, setModelAlias] = useState(skill.model_alias);
+  const [error, setError] = useState<string | null>(null);
+
+  // Pre-carrega prompt atual: se ja existe system_prompt_template (skill
+  // custom), usa esse; senao mostra placeholder pra cliente preencher.
+  useEffect(() => {
+    const tpl = (skill as any).system_prompt_template;
+    if (typeof tpl === 'string' && tpl.length > 0) {
+      setSystemPrompt(tpl);
+    }
+  }, [skill]);
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      updateAgentPrompt(clientId, squadId, agent.id, {
+        system_prompt: systemPrompt,
+        model_alias: modelAlias !== skill.model_alias ? modelAlias : undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['skill-template', agent.skill_template_id],
+      });
+      onSaved();
+    },
+    onError: (err: unknown) => {
+      setError(formatApiError(err, 'Falha ao salvar prompt.'));
+    },
+  });
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Editar prompt — {agent.name}</DialogTitle>
+          <DialogDescription>
+            Sobrescreve o system prompt deste agente. Vira uma versão
+            client-scoped: o template original do catálogo continua
+            intocado para outros tenants. O agente será re-provisionado na
+            Anthropic na próxima execução.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form
+          onSubmit={(e: FormEvent) => {
+            e.preventDefault();
+            setError(null);
+            saveMutation.mutate();
+          }}
+          className="space-y-4"
+        >
+          <div className="space-y-1.5">
+            <Label htmlFor="model">Modelo</Label>
+            <select
+              id="model"
+              value={modelAlias}
+              onChange={(e) => setModelAlias(e.target.value)}
+              className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+            >
+              <option value="claude-opus-4-7">Opus 4.7 (mais capaz)</option>
+              <option value="claude-sonnet-4-6">Sonnet 4.6 (balanceado)</option>
+              <option value="claude-haiku-4-5">Haiku 4.5 (mais barato)</option>
+            </select>
+            <p className="text-xs text-muted-foreground">
+              Atual: <code>{skill.model_alias}</code>. Trocar modelo
+              re-provisiona o agente.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="prompt">System prompt</Label>
+            <textarea
+              id="prompt"
+              value={systemPrompt}
+              onChange={(e) => setSystemPrompt(e.target.value)}
+              required
+              minLength={10}
+              rows={12}
+              placeholder="Você é um agente de…"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm font-mono"
+            />
+            <p className="text-xs text-muted-foreground">
+              {systemPrompt.length} caracteres. Mínimo 10.
+            </p>
+          </div>
+
+          {error && <p className="text-xs text-destructive">{error}</p>}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={saveMutation.isPending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="submit"
+              disabled={saveMutation.isPending || systemPrompt.length < 10}
+            >
+              {saveMutation.isPending ? 'Salvando…' : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
