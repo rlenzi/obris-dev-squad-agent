@@ -21,6 +21,7 @@ import SetupResultPage from '@/pages/SetupResult';
 import SetupReadyPage from '@/pages/SetupReady';
 import TasksListPage from '@/pages/TasksList';
 import TaskDetailPage from '@/pages/TaskDetail';
+import DemandsPage from '@/pages/Demands';
 import ComingSoonPage from '@/pages/ComingSoon';
 import { fetchSquadsForClient } from '@/lib/api';
 import { useClientId } from '@/lib/use-client-id';
@@ -261,6 +262,17 @@ export default function App() {
           <ProtectedRoute>
             <RequireSetupComplete>
               <TaskDetailPage />
+            </RequireSetupComplete>
+          </ProtectedRoute>
+        }
+      />
+      {/* S-7 do redesign — Demandas (mini-Jira embutido) */}
+      <Route
+        path="/demands"
+        element={
+          <ProtectedRoute>
+            <RequireSetupComplete>
+              <DemandsPage />
             </RequireSetupComplete>
           </ProtectedRoute>
         }

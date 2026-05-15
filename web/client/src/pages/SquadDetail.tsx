@@ -10,6 +10,7 @@ import {
   deleteAgent,
   fetchAgents,
   fetchClient,
+  fetchJiraIntegration,
   fetchManifest,
   fetchSkillTemplate,
   fetchSkillTemplates,
@@ -319,7 +320,7 @@ function ReposTab({ clientId, squadId }: { clientId: string; squadId: string }) 
 }
 
 
-// ---- Jira tab ----
+// ---- Jira tab (S-7) ----
 
 function JiraTab({
   clientId, squadId, client,
@@ -332,22 +333,42 @@ function JiraTab({
     queryKey: ['manifest', clientId, squadId],
     queryFn: () => fetchManifest(clientId, squadId),
   });
+  const integrationQuery = useQuery({
+    queryKey: ['jira-integration', clientId],
+    queryFn: () => fetchJiraIntegration(clientId),
+  });
   const projects: string[] =
     (manifestQuery.data?.content as ManifestContent | undefined)?.owns?.jira_projects ?? [];
+  const integration = integrationQuery.data;
+  const [webhookCopied, setWebhookCopied] = useState(false);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Integração Jira da squad (workspace + projetos cobertos).
+        Integração Jira da squad. Comentários humanos no Jira aparecem na
+        timeline da task; mudanças de estágio do pipeline viram comentários
+        + transitions no Jira automaticamente.
       </p>
+
       <Card>
-        <CardContent className="p-4 space-y-2 text-sm">
+        <CardHeader>
+          <CardTitle className="text-base">Conexão</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
           <p>
             <span className="text-muted-foreground">Workspace:</span>{' '}
             {client?.jira_workspace_url ? (
               <code className="text-xs">{client.jira_workspace_url}</code>
             ) : (
               <span className="text-muted-foreground">Não conectado</span>
+            )}
+          </p>
+          <p>
+            <span className="text-muted-foreground">Conta:</span>{' '}
+            {integration?.email ? (
+              <code className="text-xs">{integration.email}</code>
+            ) : (
+              <span className="text-muted-foreground">—</span>
             )}
           </p>
           <p>
@@ -362,9 +383,93 @@ function JiraTab({
           </p>
         </CardContent>
       </Card>
-      <p className="text-xs text-muted-foreground">
-        💡 Integração Jira bidirecional (webhook, comentários, status mapping) chega em S-7.
-      </p>
+
+      {integration && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Webhook</CardTitle>
+            <CardDescription>
+              Cole essa URL no Jira Cloud em <em>Settings → System →
+              WebHooks → Create</em>. Marque os eventos:{' '}
+              <code className="text-xs">
+                {integration.supported_events.join(', ')}
+              </code>.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex items-center gap-2">
+              <code className="flex-1 rounded border bg-muted px-2 py-1.5 text-xs break-all">
+                {integration.webhook_url}
+              </code>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(integration.webhook_url);
+                  setWebhookCopied(true);
+                  setTimeout(() => setWebhookCopied(false), 1500);
+                }}
+              >
+                {webhookCopied ? 'Copiado!' : 'Copiar'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {integration && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Mapeamento de estágios</CardTitle>
+            <CardDescription>
+              Quando uma task entra num desses estágios, postamos um
+              comentário e tentamos transitar a issue pro status alvo.
+              Customização por tenant chega em S-8.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted-foreground">
+                  <th className="py-1.5">Estágio</th>
+                  <th className="py-1.5">Status Jira</th>
+                  <th className="py-1.5">Comentário postado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {integration.stage_mapping.map(row => (
+                  <tr key={row.stage} className="border-t">
+                    <td className="py-1.5 pr-3">
+                      <code className="text-xs">{row.stage}</code>
+                    </td>
+                    <td className="py-1.5 pr-3">
+                      <Badge variant="outline">{row.target_status}</Badge>
+                    </td>
+                    <td className="py-1.5 text-xs text-muted-foreground">
+                      {row.message_preview}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
+      {!integration?.connected && (
+        <Card>
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            <p className="font-medium text-foreground mb-1">
+              Sem Jira conectado?
+            </p>
+            <p>
+              Você pode criar demandas direto pelo painel em{' '}
+              <a href="/demands" className="underline">/demands</a>{' '}
+              — funciona igual, sem precisar do Jira.
+            </p>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

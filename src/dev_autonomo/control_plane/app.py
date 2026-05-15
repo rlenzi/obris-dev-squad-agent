@@ -23,6 +23,7 @@ from dev_autonomo.control_plane.routers import client_agent_runs as client_agent
 from dev_autonomo.control_plane.routers import client_credentials as client_credentials_router
 from dev_autonomo.control_plane.routers import client_github as client_github_router
 from dev_autonomo.control_plane.routers import client_greenfield as client_greenfield_router
+from dev_autonomo.control_plane.routers import client_jira as client_jira_router
 from dev_autonomo.control_plane.routers import client_tasks as client_tasks_router
 from dev_autonomo.control_plane.routers import client_onboarding as client_onboarding_router
 from dev_autonomo.control_plane.routers import client_retrieval as client_retrieval_router
@@ -88,6 +89,7 @@ def create_app() -> FastAPI:
     app.include_router(client_credentials_router.router)
     app.include_router(client_github_router.router)
     app.include_router(client_greenfield_router.router)
+    app.include_router(client_jira_router.router)
     app.include_router(client_tasks_router.router)
     app.include_router(skill_templates_router.router)
     app.include_router(client_skill_proposer_router.router)
