@@ -787,6 +787,37 @@ export interface OnboardingManifest {
   human_questions?: string[];
 }
 
+// ---- GitHub repo status (PR-1 do redesign) ----
+
+export interface RepoStatusResponse {
+  url: string;
+  valid: boolean;
+  owner: string | null;
+  repo: string | null;
+  is_public: boolean | null;
+  accessible: boolean | null;
+  default_branch: string | null;
+  suggested_slug: string | null;
+  error: string | null;
+}
+
+export async function getGithubRepoStatus(
+  clientId: string,
+  url: string,
+  token?: string,
+): Promise<RepoStatusResponse> {
+  const headers: Record<string, string> = { 'X-Client-Id': clientId };
+  if (token) {
+    headers['X-GitHub-Token'] = `Bearer ${token}`;
+  }
+  const { data } = await api.get<RepoStatusResponse>(
+    '/client/github/repo-status',
+    { params: { url }, headers },
+  );
+  return data;
+}
+
+
 export async function runOnboardingAnalysis(
   clientId: string,
   squadId: string,
